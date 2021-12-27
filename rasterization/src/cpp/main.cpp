@@ -13,7 +13,7 @@
 
 
 int main() {
-    uint32_t grid_size = 600;
+    uint32_t grid_size = 32;
 
     // prepare vertex data
     std::vector<wenda::vulkan::Vertex> vertices = {

@@ -5,6 +5,8 @@ layout (location = 1) in float inWeight;
 layout (location = 2) in float inRadius;
 
 layout (location = 0) out float outDensity;
+layout (location = 1) out vec3 outPosition;
+layout (location = 2) out float outRadiusSquared;
 
 out gl_PerVertex {
 	vec4 gl_Position;
@@ -20,17 +22,35 @@ layout(push_constant) uniform PushConsts {
 
 void main() 
 {
-	float line_element = pushConsts.boxSize / pushConsts.viewportSize;
-	float volume_element = line_element * line_element * line_element;
+	float line_element = pushConsts.viewportSize / pushConsts.boxSize;
 
 	// compute effective radius of circle at given height
 	// this is also used to check whether the point is inside the plane being rendered.
 	float z_offset = inPos.z - pushConsts.planeDepth;
-	float out_radius_squared = inRadius * inRadius - z_offset * z_offset;
-	gl_ClipDistance[0] = out_radius_squared;
-	float out_radius = sqrt(max(out_radius_squared, 1e-12));
 
-	outDensity = inWeight / (4 / 3 * radians(180) * inRadius * inRadius * inRadius) * volume_element;
+	gl_ClipDistance[0] = line_element * (inRadius - abs(z_offset));
+
+	if (gl_ClipDistance[0] < 0)
+	{
+		return;
+	}
+
+	float out_radius = inRadius * line_element;
+
+	float plane_radius = sqrt(max(0.0, inRadius * inRadius - z_offset * z_offset));
+	float n_pixel_diameter = 2 * ceil(plane_radius * line_element);
+	float n_pixel_volume = 4 / 3 * radians(180) * out_radius * out_radius * out_radius;
+
+	if (out_radius < 0.5) {
+		outDensity = inWeight;
+		gl_PointSize = 1;
+	}
+	else {
+		outDensity = inWeight / n_pixel_volume;
+    	gl_PointSize = n_pixel_diameter;
+	}
+
 	gl_Position = vec4(2 * (inPos.xy / pushConsts.boxSize - 0.5), 0.0, 1.0);
-    gl_PointSize = 2 * out_radius / line_element;
+	outRadiusSquared = out_radius * out_radius;
+	outPosition = vec3(inPos.xy, inPos.z - pushConsts.planeDepth) * line_element;
 }

@@ -586,7 +586,7 @@ void PointRenderer::render_points_volume(tcb::span<const Vertex> points, tcb::sp
         command_buffer.begin({});
 
         build_point_render_commands(command_buffer, *impl_, *vertexBuffer, points.size(), grid_size_, box_size_,
-                                    static_cast<float>(i) / grid_size_ * box_size_);
+                                    ((static_cast<float>(i) + 0.5f) / grid_size_) * box_size_);
         build_image_transfer_commands(command_buffer, *impl_, grid_size_);
 
         command_buffer.end();
