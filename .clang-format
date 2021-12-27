@@ -1,0 +1,5 @@
+BasedOnStyle: llvm
+IndentWidth: 4
+ColumnLimit: 100
+AlignAfterOpenBracket: AlwaysBreak
+BinPackArguments: false
