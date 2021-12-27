@@ -177,13 +177,11 @@ PointRendererImpl make_point_renderer(VulkanContainer const &container, uint32_t
         }};
 
     // prepare graphics pipeline
-    vk::DescriptorSetLayoutBinding bindings[] = {};
-
     vk::raii::DescriptorSetLayout descriptorSetLayout(
         device,
         {
             .bindingCount = 0,
-            .pBindings = bindings,
+            .pBindings = nullptr,
         });
 
     vk::PushConstantRange pushConstantRange{

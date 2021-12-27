@@ -24,9 +24,20 @@ endif()
 
 find_package(Vulkan REQUIRED)
 find_program(glslc_executable NAMES glslc HINTS Vulkan::glslc)
-find_program(xxd_executale NAMES xxd)
+find_program(xxd_executable NAMES xxd)
+
+if (xxd_executable STREQUAL "xxd_executable-NOTFOUND" OR glslc_executable STREQUAL "glslc_executable-NOTFOUND")
+    message(WARNING "Could not find glslc or xxd, disabling shader compilation.")
+    set(ENABLE_SHADER_COMPILATION 0)
+else()
+    set(ENABLE_SHADER_COMPILATION 1)
+endif()
 
 function(add_spirv_shader INPUT_FILE)
+    if (NOT ENABLE_SHADER_COMPILATION)
+        return()
+    endif()
+
     set(COMPILED_SHADER ${CMAKE_CURRENT_SOURCE_DIR}/${INPUT_FILE}.spv)
     set(COMPILED_SHADER_HEADER ${COMPILED_SHADER}.h)
 
@@ -42,7 +53,7 @@ function(add_spirv_shader INPUT_FILE)
 
     add_custom_command(
         OUTPUT ${COMPILED_SHADER_HEADER}
-        COMMAND ${xxd_executale} -i ${SHADER_BASENAME} ${COMPILED_SHADER_HEADER}
+        COMMAND ${xxd_executable} -i ${SHADER_BASENAME} ${COMPILED_SHADER_HEADER}
         DEPENDS ${COMPILED_SHADER}
         COMMENT "Generating ${INPUT_FILE}.spv.h"
         WORKING_DIRECTORY ${SHADER_DIRECTORY}
