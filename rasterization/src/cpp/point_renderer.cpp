@@ -631,8 +631,10 @@ void PointRenderer::render_points_volume(tcb::span<const Vertex> points, tcb::sp
         throw std::runtime_error("result buffer too small");
     }
 
-    TransferImagePool transfer_images(container_.device_, container_.physical_device_.getMemoryProperties(), grid_size_, 4);
-    thread_pool pool(4);
+    auto num_parallel_transfers = std::min({uint32_t(std::thread::hardware_concurrency()), uint32_t(grid_size_)});
+
+    TransferImagePool transfer_images(container_.device_, container_.physical_device_.getMemoryProperties(), grid_size_, num_parallel_transfers);
+    thread_pool pool(num_parallel_transfers);
 
     std::map<int, MemoryBackedImage> transfer_images_map;
     std::mutex transfer_images_map_mutex;

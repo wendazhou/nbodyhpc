@@ -26,6 +26,8 @@ find_package(Vulkan REQUIRED)
 find_program(glslc_executable NAMES glslc HINTS Vulkan::glslc)
 find_program(xxd_executable NAMES xxd)
 
+find_package(Threads REQUIRED)
+
 if (xxd_executable STREQUAL "xxd_executable-NOTFOUND" OR glslc_executable STREQUAL "glslc_executable-NOTFOUND")
     message(WARNING "Could not find glslc or xxd, disabling shader compilation.")
     set(ENABLE_SHADER_COMPILATION 0)
@@ -71,11 +73,11 @@ add_spirv_shader(shaders/triangle.frag)
 add_custom_target(shaders DEPENDS ${SPV_SHADERS} ${SPV_SHADERS_HEADERS})
 
 add_executable(rasterizer src/cpp/main.cpp src/cpp/vulkan_support.cpp src/cpp/point_renderer.cpp src/cpp/lodepng.cpp)
-target_link_libraries(rasterizer Vulkan::Vulkan ${CMAKE_DL_LIBS})
+target_link_libraries(rasterizer Vulkan::Vulkan ${CMAKE_DL_LIBS} Threads::Threads)
 target_include_directories(rasterizer PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
 pybind11_add_module(_impl src/cpp/vulkan_support.cpp src/cpp/point_renderer.cpp src/cpp/pybind.cpp)
-target_link_libraries(_impl PUBLIC Vulkan::Vulkan ${CMAKE_DL_LIBS})
+target_link_libraries(_impl PRIVATE Vulkan::Vulkan ${CMAKE_DL_LIBS} Threads::Threads)
 target_include_directories(_impl PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
 install(TARGETS _impl DESTINATION .)
