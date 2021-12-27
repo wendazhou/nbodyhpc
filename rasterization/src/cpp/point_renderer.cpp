@@ -396,12 +396,12 @@ std::tuple<vk::raii::Buffer, vk::raii::DeviceMemory> stage_to_vertex_buffer(Vulk
 }
 
 template<typename It>
-void read_buffer_strided(vk::raii::DeviceMemory const& memory, It output, uint32_t grid_size, uint32_t row_pitch_bytes) {
+void read_buffer_strided(vk::raii::DeviceMemory const& memory, It output, uint32_t grid_size, vk::SubresourceLayout const& layout) {
     typedef typename std::iterator_traits<It>::value_type T;
 
-    auto row_pitch_elements = row_pitch_bytes / sizeof(T);
+    auto row_pitch_elements = layout.rowPitch / sizeof(T);
 
-    T* data = static_cast<T *>(memory.mapMemory(0, VK_WHOLE_SIZE));
+    T* data = static_cast<T *>(memory.mapMemory(0, VK_WHOLE_SIZE)) + layout.offset;
 
     for (int y = 0; y < grid_size; ++y) {
         std::copy(
@@ -562,7 +562,7 @@ void PointRenderer::render_points(tcb::span<const Vertex> points, tcb::span<floa
 
     vk::SubresourceLayout dstImageLayout =
         impl_->readout_image_.image_.getSubresourceLayout({vk::ImageAspectFlagBits::eColor, 0, 0});
-    read_buffer_strided(impl_->readout_image_.memory_, result.data(), grid_size_, dstImageLayout.rowPitch);
+    read_buffer_strided(impl_->readout_image_.memory_, result.data(), grid_size_, dstImageLayout);
 }
 
 void PointRenderer::render_points_volume(tcb::span<const Vertex> points, tcb::span<float> result, std::function<bool()> const& should_stop) {
@@ -594,7 +594,7 @@ void PointRenderer::render_points_volume(tcb::span<const Vertex> points, tcb::sp
         submit_work(container_.device_, container_.queue_, {.commandBufferCount = 1, .pCommandBuffers = &(*command_buffer)});
 
         read_buffer_strided(impl_->readout_image_.memory_, result.data() + i * grid_size_ * grid_size_, grid_size_,
-                            dstImageLayout.rowPitch);
+                            dstImageLayout);
     }
 }
 

@@ -13,7 +13,7 @@
 
 
 int main() {
-    uint32_t grid_size = 800;
+    uint32_t grid_size = 600;
 
     // prepare vertex data
     std::vector<wenda::vulkan::Vertex> vertices = {
@@ -21,20 +21,20 @@ int main() {
     };
 
     // Create Vulkan instance, context + device
-    wenda::vulkan::VulkanContainer vulkan;
+    wenda::vulkan::VulkanContainer vulkan(true);
 
     wenda::vulkan::PointRenderer renderer(vulkan, 1.0f, grid_size);
 
     std::vector<uint8_t> result (grid_size * grid_size * grid_size * sizeof(float));
 
-    for(int i = 0; i < 10; ++i) {
+    for(int i = 0; i < 2; ++i) {
         std::cout << "Rendering frame " << i << std::endl;
         auto start_time = std::chrono::high_resolution_clock::now();
         renderer.render_points_volume(vertices, {reinterpret_cast<float*>(result.data()), grid_size * grid_size * grid_size});
         auto end_time = std::chrono::high_resolution_clock::now();
 
         auto duration = std::chrono::duration_cast<std::chrono::duration<double>>(end_time - start_time);
-        std::cout << "Done rendering in: " << duration << " seconds" << std::endl;
+        std::cout << "Done rendering in: " << duration.count() << " seconds" << std::endl;
     }
 
 

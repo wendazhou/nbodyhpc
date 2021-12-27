@@ -33,7 +33,7 @@ class VulkanContainer {
                     std::optional<vk::raii::DebugUtilsMessengerEXT>>);
 
   public:
-    VulkanContainer();
+    explicit VulkanContainer(bool enable_validation_layers = true);
     VulkanContainer(VulkanContainer&&) noexcept = default;
 };
 

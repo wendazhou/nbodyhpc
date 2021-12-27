@@ -158,7 +158,7 @@ vk::raii::DebugUtilsMessengerEXT create_debug_util_messenger_extension(vk::raii:
 }
 
 
-std::tuple<vk::raii::Context, vk::raii::Instance, vk::raii::PhysicalDevice, vk::raii::Device, vk::raii::Queue, vk::raii::CommandPool, std::optional<vk::raii::DebugUtilsMessengerEXT>> initialize_vulkan() {
+std::tuple<vk::raii::Context, vk::raii::Instance, vk::raii::PhysicalDevice, vk::raii::Device, vk::raii::Queue, vk::raii::CommandPool, std::optional<vk::raii::DebugUtilsMessengerEXT>> initialize_vulkan(bool enable_validation_layers) {
     // Create Vulkan instance, context + device
     vk::raii::Context context;
 
@@ -169,22 +169,34 @@ std::tuple<vk::raii::Context, vk::raii::Instance, vk::raii::PhysicalDevice, vk::
                                 .apiVersion = VK_API_VERSION_1_0};
 
     const char *validationLayers[] = {"VK_LAYER_KHRONOS_validation"};
-    uint32_t layerCount = 1;
+    uint32_t layerCount = 0;
+
+    if (enable_validation_layers) {
+        layerCount = 1;
+    }
 
     const char *extensions[] = {
         VK_EXT_DEBUG_UTILS_EXTENSION_NAME,
     };
+    uint32_t extensionCount = 0;
+
+    if (enable_validation_layers) {
+        extensionCount = 1;
+    }
 
     vk::InstanceCreateInfo instanceCreateInfo{.pApplicationInfo = &appInfo,
                                               .enabledLayerCount = layerCount,
                                               .ppEnabledLayerNames = validationLayers,
-                                              .enabledExtensionCount =
-                                                  sizeof(extensions) / sizeof(extensions[0]),
+                                              .enabledExtensionCount = extensionCount,
                                               .ppEnabledExtensionNames = extensions};
 
     vk::raii::Instance instance{context, instanceCreateInfo};
 
-    vk::raii::DebugUtilsMessengerEXT debugUtilsMessenger = create_debug_util_messenger_extension(instance);
+    std::optional<vk::raii::DebugUtilsMessengerEXT> debugUtilsMessenger;
+
+    if (enable_validation_layers) {
+        debugUtilsMessenger = create_debug_util_messenger_extension(instance);
+    }
 
     vk::raii::PhysicalDevices physicalDevices{instance};
 
@@ -235,7 +247,7 @@ std::tuple<vk::raii::Context, vk::raii::Instance, vk::raii::PhysicalDevice, vk::
 
 }
 
-VulkanContainer::VulkanContainer() : VulkanContainer(initialize_vulkan()) {}
+VulkanContainer::VulkanContainer(bool enable_validation_layers) : VulkanContainer(initialize_vulkan(enable_validation_layers)) {}
 VulkanContainer::VulkanContainer(std::tuple<vk::raii::Context, vk::raii::Instance, vk::raii::PhysicalDevice,
                     vk::raii::Device, vk::raii::Queue, vk::raii::CommandPool, std::optional<vk::raii::DebugUtilsMessengerEXT>> data) :
     context_(std::move(std::get<0>(data))),
