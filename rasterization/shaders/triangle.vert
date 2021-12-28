@@ -28,26 +28,26 @@ void main()
 	// this is also used to check whether the point is inside the plane being rendered.
 	float z_offset = inPos.z - pushConsts.planeDepth;
 
-	gl_ClipDistance[0] = line_element * (inRadius - abs(z_offset));
+	//gl_ClipDistance[0] = line_element * (inRadius - abs(z_offset)) + 1;
 
-	if (gl_ClipDistance[0] < 0)
-	{
-		return;
-	}
+	//if (gl_ClipDistance[0] < 0)
+	//{
+	//	return;
+	//}
 
 	float out_radius = inRadius * line_element;
 
 	float plane_radius = sqrt(max(0.0, inRadius * inRadius - z_offset * z_offset));
 	float n_pixel_diameter = 2 * ceil(plane_radius * line_element);
-	float n_pixel_volume = 4 / 3 * radians(180) * out_radius * out_radius * out_radius;
+	float volume = 4. / 3. * radians(180) * out_radius * out_radius * out_radius;
 
 	if (out_radius < 0.5) {
 		outDensity = inWeight;
 		gl_PointSize = 1;
 	}
 	else {
-		outDensity = inWeight / n_pixel_volume;
-    	gl_PointSize = n_pixel_diameter;
+		outDensity = inWeight / volume;
+    	gl_PointSize = n_pixel_diameter + 2;
 	}
 
 	gl_Position = vec4(2 * (inPos.xy / pushConsts.boxSize - 0.5), 0.0, 1.0);

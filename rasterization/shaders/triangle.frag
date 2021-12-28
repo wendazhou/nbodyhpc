@@ -8,32 +8,12 @@ layout (location = 0) out float outValue;
 
 layout (origin_upper_left) in vec4 gl_FragCoord;
 
-vec3 sample_locations_4[] = {
-    vec3(-2, -6,  6) / 16,
-    vec3( 6, -2,  2) / 16,
-    vec3(-6,  2, -2) / 16,
-    vec3( 2,  6, -6) / 16,
-};
+layout (constant_id=0) const int SUBGRID_SIZE = 4;
 
-vec3 sample_locations_8[] = {
-    vec3( 1, -3, -5) / 16,
-    vec3(-1,  3,  5) / 16,
-    vec3( 5,  1, -7) / 16,
-    vec3(-3, -5,  3) / 16,
-    vec3(-5,  5,  7) / 16,
-    vec3(-7, -1, -3) / 16,
-    vec3( 3,  7,  1) / 16,
-    vec3( 7, -7, -1) / 16,
-};
-
-#define NUM_SAMPLES 8
-#define SAMPLES_ARRAY_NAME_2(N) sample_locations_##N
-#define SAMPLES_ARRAY_NAME(N) SAMPLES_ARRAY_NAME_2(N)
-#define SAMPLES_ARRAY SAMPLES_ARRAY_NAME(NUM_SAMPLES)
 
 void main() 
 {
-    const float increment = 1.0 / float(NUM_SAMPLES + 1);
+    const float increment = 1.0 / float(SUBGRID_SIZE * SUBGRID_SIZE * SUBGRID_SIZE);
 
     if (inRadiusSquared < 0.25) {
         // If the particle is too small, just return the density.
@@ -41,23 +21,24 @@ void main()
         return;
     }
 
-    vec3 delta = inPosition - vec3(gl_FragCoord.xy, 0);
-
+    // adjust delta so it computes offset from corner of cell
+    vec3 delta = inPosition - vec3(gl_FragCoord.xy - 0.5, -0.5);
     float overlap = 0.0;
 
-    if (dot(delta, delta) < inRadiusSquared)
-    {
-        overlap += increment;
-    }
+    for(int i = 0; i < SUBGRID_SIZE; i++) {
+        float x_offset = (float(i) + 0.5) / SUBGRID_SIZE;
 
-    for(int i = 0; i < 4; i++)
-    {
-        vec3 sample_delta = delta + SAMPLES_ARRAY[i];
-        float dist_squared = dot(sample_delta, sample_delta);
+        for(int j = 0; j < SUBGRID_SIZE; ++j) {
+            float y_offset = (float(j) + 0.5) / SUBGRID_SIZE;
 
-        if(dist_squared < inRadiusSquared)
-        {
-            overlap += increment;
+            for(int k = 0; k < SUBGRID_SIZE; ++k) {
+                float z_offset = (float(k) + 0.5) / SUBGRID_SIZE;
+                vec3 subdelta = delta - vec3(x_offset, y_offset, z_offset);
+
+                if (dot(subdelta, subdelta) < inRadiusSquared) {
+                    overlap += increment;
+                }
+            }
         }
     }
 

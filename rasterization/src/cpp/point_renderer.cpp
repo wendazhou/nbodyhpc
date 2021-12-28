@@ -174,12 +174,12 @@ vk::raii::RenderPass create_render_pass(vk::raii::Device const &device, vk::Form
     return vk::raii::RenderPass(device, renderPassCreateInfo);
 }
 
-PointRendererImpl make_point_renderer(VulkanContainer const &container, uint32_t size) {
+PointRendererImpl make_point_renderer(VulkanContainer const &container, PointRendererConfiguration const &config) {
     auto &device = container.device_;
     auto memory_properties = container.physical_device_.getMemoryProperties();
 
-    uint32_t width = size;
-    uint32_t height = size;
+    uint32_t width = config.grid_size;
+    uint32_t height = config.grid_size;
 
     vk::raii::RenderPass renderPass = create_render_pass(device, vk::Format::eR32Sfloat);
 
@@ -198,6 +198,17 @@ PointRendererImpl make_point_renderer(VulkanContainer const &container, uint32_t
             .pCode = reinterpret_cast<uint32_t const *>(triangle_frag_spv),
         });
 
+    vk::SpecializationMapEntry specializationEntries[] = {
+        {0, 0, sizeof(float)},
+    };
+
+    vk::SpecializationInfo specializationInfo{
+        .mapEntryCount = 1,
+        .pMapEntries = specializationEntries,
+        .dataSize = sizeof(float),
+        .pData = &config.subsample_factor,
+    };
+
     vk::PipelineShaderStageCreateInfo shaderStages[] = {
         {
             .stage = vk::ShaderStageFlagBits::eVertex,
@@ -208,6 +219,7 @@ PointRendererImpl make_point_renderer(VulkanContainer const &container, uint32_t
             .stage = vk::ShaderStageFlagBits::eFragment,
             .module = *fragmentShader,
             .pName = "main",
+            .pSpecializationInfo = &specializationInfo,
         }};
 
     // prepare graphics pipeline
@@ -570,9 +582,9 @@ void build_image_transfer_command(
 
 } // namespace
 
-PointRenderer::PointRenderer(VulkanContainer const &container, float box_size, uint32_t grid_size)
-    : impl_(std::make_unique<PointRendererImpl>(make_point_renderer(container, grid_size))),
-      container_(container), box_size_(box_size), grid_size_(grid_size) {}
+PointRenderer::PointRenderer(VulkanContainer const &container, PointRendererConfiguration const &config)
+    : impl_(std::make_unique<PointRendererImpl>(make_point_renderer(container, config))),
+      container_(container), box_size_(config.box_size), grid_size_(config.grid_size) {}
 
 PointRenderer::~PointRenderer() {}
 

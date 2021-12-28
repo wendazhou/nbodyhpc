@@ -22,6 +22,12 @@ struct Vertex {
     float radius;
 };
 
+struct PointRendererConfiguration {
+    float box_size;
+    uint32_t grid_size;
+    uint32_t subsample_factor = 4;
+};
+
 class PointRenderer {
     std::unique_ptr<PointRendererImpl> impl_;
     VulkanContainer const& container_;
@@ -30,7 +36,7 @@ class PointRenderer {
     uint32_t grid_size_;
 
 public:
-    PointRenderer(VulkanContainer const& container, float box_size, uint32_t grid_size);
+    PointRenderer(VulkanContainer const& container, PointRendererConfiguration const& config);
     ~PointRenderer();
 
     PointRenderer(PointRenderer&&) noexcept = default;

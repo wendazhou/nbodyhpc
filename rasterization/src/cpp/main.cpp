@@ -34,7 +34,7 @@ std::vector<float>
 render_vertices(float box_size, uint32_t grid_size, std::vector<wenda::vulkan::Vertex> vertices) {
     // Create Vulkan instance, context + device
     wenda::vulkan::VulkanContainer vulkan;
-    wenda::vulkan::PointRenderer renderer(vulkan, box_size, grid_size);
+    wenda::vulkan::PointRenderer renderer(vulkan, {.box_size = box_size, .grid_size = grid_size});
 
     std::vector<float> result(grid_size * grid_size * grid_size);
 
@@ -59,9 +59,27 @@ void render_single_sphere(uint32_t grid_size) {
     auto result = render_vertices(1.0f, grid_size, vertices);
 
     auto total_sum = std::reduce(result.begin(), result.end());
-    std::cout << "Total sum: " << total_sum << std::endl;
+    std::cout << "Total weight: " << total_sum << std::endl;
+
+    auto total_pixels = std::transform_reduce(
+        result.begin(), result.end(), 0u, std::plus<>{}, [](float v) { return v > 0.0f ? 1u : 0u; });
+    std::cout << "Proportion pixels: " << static_cast<double>(total_pixels) / (grid_size * grid_size * grid_size) << std::endl;
+
+    auto central_pixel = result[grid_size * grid_size * grid_size / 2 + grid_size * grid_size / 2 + grid_size / 2];
+    std::cout << "Central pixel: " << central_pixel << std::endl;
 
     save_png_grayscale({result.data() + (grid_size / 2) * grid_size * grid_size, grid_size * grid_size}, grid_size, "sphere.png");
+
+    if (grid_size < 64) {
+        std::stringstream ss;
+        ss << "sphere_" << grid_size << ".bin";
+        auto filename = ss.str();
+
+        std::cout << "Saving result to file " << filename << std::endl;
+        std::ofstream file(filename, std::ios::binary);
+        file.write(reinterpret_cast<char const*>(result.data()), result.size() * sizeof(float));
+        file.close();
+    }
 }
 
 void render_points_from_file(uint32_t grid_size, const char *filepath) {
@@ -93,6 +111,16 @@ void render_points_from_file(uint32_t grid_size, const char *filepath) {
         return a.position[2] < b.position[2];
     });
     auto result = render_vertices(25.0f, grid_size, vertices);
+
+    auto rendered_mass = std::reduce(result.begin(), result.end());
+    auto input_mass = std::transform_reduce(
+        vertices.begin(),
+        vertices.end(),
+        0.0f,
+        std::plus<>(),
+        [](wenda::vulkan::Vertex const &v) { return v.weight; });
+
+    std::cout << "Mass reconstruction: " << rendered_mass / input_mass << std::endl;
 
     std::vector<float> result_out(grid_size * grid_size);
 

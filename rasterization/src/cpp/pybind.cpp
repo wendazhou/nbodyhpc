@@ -73,7 +73,7 @@ py::array_t<float> render_points(
     std::vector<wenda::vulkan::Vertex> vertices = assemble_vertices(positions, weight, radii);
 
     wenda::vulkan::VulkanContainer vulkan;
-    wenda::vulkan::PointRenderer renderer(vulkan, box_size, grid_size);
+    wenda::vulkan::PointRenderer renderer(vulkan, { .box_size = box_size, .grid_size = grid_size});
 
     float *result_data = new float[grid_size * grid_size];
     renderer.render_points(vertices, {result_data, grid_size * grid_size});
@@ -98,7 +98,7 @@ py::array_t<float> render_points_volume(
         py::gil_scoped_release release;
 
         wenda::vulkan::VulkanContainer vulkan;
-        wenda::vulkan::PointRenderer renderer(vulkan, box_size, grid_size);
+        wenda::vulkan::PointRenderer renderer(vulkan, {.box_size = box_size, .grid_size = grid_size});
 
         result_data = new float[grid_size * grid_size * grid_size];
         renderer.render_points_volume(
