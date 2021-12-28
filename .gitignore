@@ -3,6 +3,7 @@ _skbuild/
 .vscode/
 
 *.so
+*.pyd
 *.egg-info/
 
 __pycache__/
