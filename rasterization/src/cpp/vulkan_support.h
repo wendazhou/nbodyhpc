@@ -13,11 +13,7 @@ namespace wenda {
 
 namespace vulkan {
 
-/** Main class containing the vulkan objects that are persistent throughout the application.
- *
- */
-class VulkanContainer {
-  public:
+struct VulkanContainerFields {
     vk::raii::Context context_;
     vk::raii::Instance instance_;
     vk::raii::PhysicalDevice physical_device_;
@@ -27,13 +23,14 @@ class VulkanContainer {
     vk::raii::CommandPool command_pool_;
     vk::raii::CommandPool transfer_command_pool_;
     std::optional<vk::raii::DebugUtilsMessengerEXT> debug_messenger_;
+};
 
+/** Main class containing the vulkan objects that are persistent throughout the application.
+ *
+ */
+class VulkanContainer : public VulkanContainerFields {
   protected:
-    VulkanContainer(std::tuple<
-                    vk::raii::Context, vk::raii::Instance, vk::raii::PhysicalDevice,
-                    vk::raii::Device, vk::raii::Queue, vk::raii::Queue, vk::raii::CommandPool,
-                    vk::raii::CommandPool,
-                    std::optional<vk::raii::DebugUtilsMessengerEXT>>);
+    VulkanContainer(VulkanContainerFields&& fields) noexcept;
 
   public:
     explicit VulkanContainer(bool enable_validation_layers = true);

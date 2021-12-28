@@ -147,11 +147,7 @@ create_debug_util_messenger_extension(vk::raii::Instance const &instance) {
     return vk::raii::DebugUtilsMessengerEXT(instance, debugUtilsMessengerCreateInfoEXT);
 }
 
-std::tuple<
-    vk::raii::Context, vk::raii::Instance, vk::raii::PhysicalDevice, vk::raii::Device,
-    vk::raii::Queue, vk::raii::Queue, vk::raii::CommandPool, vk::raii::CommandPool,
-    std::optional<vk::raii::DebugUtilsMessengerEXT>>
-initialize_vulkan(bool enable_validation_layers) {
+VulkanContainerFields initialize_vulkan(bool enable_validation_layers) {
     // Create Vulkan instance, context + device
     vk::raii::Context context;
 
@@ -265,7 +261,7 @@ initialize_vulkan(bool enable_validation_layers) {
             .queueFamilyIndex = transferQueueFamilyIndex,
         });
 
-    return std::make_tuple(
+    return {
         std::move(context),
         std::move(instance),
         std::move(physicalDevice),
@@ -274,24 +270,15 @@ initialize_vulkan(bool enable_validation_layers) {
         std::move(transfer_queue),
         std::move(commandPool),
         std::move(transferCommandPool),
-        std::move(debugUtilsMessenger));
+        std::move(debugUtilsMessenger)
+    };
 }
 
 } // namespace
 
 VulkanContainer::VulkanContainer(bool enable_validation_layers)
     : VulkanContainer(initialize_vulkan(enable_validation_layers)) {}
-VulkanContainer::VulkanContainer(
-    std::tuple<
-        vk::raii::Context, vk::raii::Instance, vk::raii::PhysicalDevice, vk::raii::Device,
-        vk::raii::Queue, vk::raii::Queue, vk::raii::CommandPool, vk::raii::CommandPool,
-        std::optional<vk::raii::DebugUtilsMessengerEXT>>
-        data)
-    : context_(std::move(std::get<0>(data))), instance_(std::move(std::get<1>(data))),
-      physical_device_(std::move(std::get<2>(data))), device_(std::move(std::get<3>(data))),
-      queue_(std::move(std::get<4>(data))), transfer_queue_(std::move(std::get<5>(data))),
-      command_pool_(std::move(std::get<6>(data))), transfer_command_pool_(std::move(std::get<7>(data))),
-      debug_messenger_(std::move(std::get<8>(data))) {}
+VulkanContainer::VulkanContainer(VulkanContainerFields&& fields) noexcept : VulkanContainerFields(std::move(fields)) {}
 
 } // namespace vulkan
 } // namespace wenda
