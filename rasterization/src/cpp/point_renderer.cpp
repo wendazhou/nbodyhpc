@@ -660,7 +660,7 @@ class TransferImagePool {
     }
 
     MemoryBackedImage get_image() {
-        std::unique_lock<std::mutex> lock(mutex_, std::try_to_lock);
+        std::unique_lock lock(mutex_);
 
         while (true) {
             if (!images_.empty()) {
@@ -675,7 +675,7 @@ class TransferImagePool {
 
     void return_image(MemoryBackedImage &&image) {
         {
-            std::lock_guard<std::mutex> lock(mutex_);
+            std::scoped_lock lock(mutex_);
             images_.push(std::move(image));
         }
         cv_.notify_one();
