@@ -11,6 +11,7 @@
 
 #include "lodepng.h"
 #include "point_renderer.h"
+#include "vertex_utilities.h"
 #include "vulkan_support.h"
 
 void save_png_grayscale(tcb::span<float> data, uint32_t grid_size, std::string const &filename) {
@@ -34,13 +35,13 @@ std::vector<float>
 render_vertices(float box_size, uint32_t grid_size, std::vector<wenda::vulkan::Vertex> vertices) {
     // Create Vulkan instance, context + device
     wenda::vulkan::VulkanContainer vulkan;
-    wenda::vulkan::PointRenderer renderer(vulkan, {.box_size = box_size, .grid_size = grid_size});
+    wenda::vulkan::PointRenderer renderer(vulkan, {.grid_size = grid_size});
 
     std::vector<float> result(grid_size * grid_size * grid_size);
 
     std::cout << "Start rendering volume" << std::endl;
     auto start_time = std::chrono::high_resolution_clock::now();
-    renderer.render_points_volume(vertices, result);
+    renderer.render_points_volume(vertices, box_size, result);
     auto end_time = std::chrono::high_resolution_clock::now();
     auto duration =
         std::chrono::duration_cast<std::chrono::duration<double>>(end_time - start_time);
@@ -105,20 +106,24 @@ void render_points_from_file(uint32_t grid_size, const char *filepath) {
         std::plus<>(),
         [](wenda::vulkan::Vertex const &v) { return v.radius; });
 
-    std::cout << "Average radius: " << total_radius / num_points << std::endl;
-
-    std::sort(vertices.begin(), vertices.end(), [](wenda::vulkan::Vertex const &a, wenda::vulkan::Vertex const &b) {
-        return a.position[2] < b.position[2];
-    });
-    auto result = render_vertices(25.0f, grid_size, vertices);
-
-    auto rendered_mass = std::reduce(result.begin(), result.end());
     auto input_mass = std::transform_reduce(
         vertices.begin(),
         vertices.end(),
         0.0f,
         std::plus<>(),
         [](wenda::vulkan::Vertex const &v) { return v.weight; });
+
+    std::cout << "Average radius: " << total_radius / num_points << std::endl;
+
+    float box_size = 25.0f;
+    wenda::augment_vertices_periodic(vertices, box_size);
+    wenda::sort_vertices(vertices);
+
+    std::cout << "Vertices after augmentation: " << vertices.size() << std::endl;
+
+    auto result = render_vertices(box_size, grid_size, vertices);
+
+    auto rendered_mass = std::reduce(result.begin(), result.end());
 
     std::cout << "Mass reconstruction: " << rendered_mass / input_mass << std::endl;
 

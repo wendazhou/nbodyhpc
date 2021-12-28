@@ -81,11 +81,13 @@ add_spirv_shader(shaders/triangle.vert)
 add_spirv_shader(shaders/triangle.frag)
 add_custom_target(shaders DEPENDS ${SPV_SHADERS} ${SPV_SHADERS_HEADERS})
 
-add_executable(rasterizer src/cpp/main.cpp src/cpp/vulkan_support.cpp src/cpp/point_renderer.cpp src/cpp/lodepng.cpp)
-target_link_libraries(rasterizer Vulkan::Vulkan ${CMAKE_DL_LIBS} Threads::Threads)
-target_include_directories(rasterizer PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+if (NOT SKBUILD)
+    add_executable(rasterizer src/cpp/main.cpp src/cpp/vulkan_support.cpp src/cpp/point_renderer.cpp src/cpp/lodepng.cpp src/cpp/vertex_utilities.cpp)
+    target_link_libraries(rasterizer Vulkan::Vulkan ${CMAKE_DL_LIBS} Threads::Threads)
+    target_include_directories(rasterizer PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+endif()
 
-pybind11_add_module(_impl src/cpp/vulkan_support.cpp src/cpp/point_renderer.cpp src/cpp/pybind.cpp)
+pybind11_add_module(_impl src/cpp/vulkan_support.cpp src/cpp/point_renderer.cpp src/cpp/pybind.cpp src/cpp/vertex_utilities.cpp)
 target_link_libraries(_impl PRIVATE Vulkan::Vulkan ${CMAKE_DL_LIBS} Threads::Threads)
 target_include_directories(_impl PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 

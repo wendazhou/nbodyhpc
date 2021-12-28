@@ -584,11 +584,11 @@ void build_image_transfer_command(
 
 PointRenderer::PointRenderer(VulkanContainer const &container, PointRendererConfiguration const &config)
     : impl_(std::make_unique<PointRendererImpl>(make_point_renderer(container, config))),
-      container_(container), box_size_(config.box_size), grid_size_(config.grid_size) {}
+      container_(container), grid_size_(config.grid_size) {}
 
 PointRenderer::~PointRenderer() {}
 
-void PointRenderer::render_points(tcb::span<const Vertex> points, tcb::span<float> result) {
+void PointRenderer::render_points(tcb::span<const Vertex> points, float box_size, tcb::span<float> result) {
     if (result.size() < grid_size_ * grid_size_) {
         throw std::runtime_error("result buffer too small");
     }
@@ -620,7 +620,7 @@ void PointRenderer::render_points(tcb::span<const Vertex> points, tcb::span<floa
         *render_target.framebuffer_,
         *vertex_buffer,
         grid_size_,
-        box_size_,
+        box_size,
         0.0f,
         points.size(),
         0);
@@ -803,7 +803,7 @@ class CommandBufferTracker {
 } // namespace
 
 void PointRenderer::render_points_volume(
-    tcb::span<const Vertex> points, tcb::span<float> result,
+    tcb::span<const Vertex> points, float box_size, tcb::span<float> result,
     std::function<bool()> const &should_stop) {
     if (result.size() < grid_size_ * grid_size_ * grid_size_) {
         throw std::runtime_error("result buffer too small");
@@ -852,9 +852,9 @@ void PointRenderer::render_points_volume(
         }
 
         // compute section of vertices that will be rendered in this pass.
-        float plane_depth = (static_cast<float>(i) + 0.5f) / grid_size_ * box_size_;
-        float plane_lower_bound = static_cast<float>(i) * box_size_ / grid_size_ - max_radius;
-        float plane_upper_bound = static_cast<float>(i + 1) * box_size_ / grid_size_ + max_radius;
+        float plane_depth = (static_cast<float>(i) + 0.5f) / grid_size_ * box_size;
+        float plane_lower_bound = static_cast<float>(i) * box_size / grid_size_ - max_radius;
+        float plane_upper_bound = static_cast<float>(i + 1) * box_size / grid_size_ + max_radius;
 
         auto it_start = std::lower_bound(
             points.begin(), points.end(), plane_lower_bound, [](Vertex const &v, float b) {
@@ -878,7 +878,7 @@ void PointRenderer::render_points_volume(
             *render_target.framebuffer_,
             *vertexBuffer,
             grid_size_,
-            box_size_,
+            box_size,
             plane_depth,
             vertex_end - vertex_start,
             vertex_start);
