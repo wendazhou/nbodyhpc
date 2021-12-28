@@ -213,11 +213,17 @@ VulkanContainerFields initialize_vulkan(bool enable_validation_layers) {
         static_cast<uint32_t>(std::distance(queueFamilyProperties.begin(), it_graphics_queue));
 
     float queuePriority = 1.0f;
+
     std::vector<vk::DeviceQueueCreateInfo> queueCreateInfos;
+
+    uint32_t num_graphics_queues = it_graphics_queue->queueCount;
+    std::vector<float> queuePriorities(num_graphics_queues, queuePriority);
+
     queueCreateInfos.push_back(
         {.queueFamilyIndex = graphicsQueueFamilyIndex,
-         .queueCount = 1,
-         .pQueuePriorities = &queuePriority});
+         .queueCount = num_graphics_queues,
+         .pQueuePriorities = queuePriorities.data()});
+
 
     uint32_t transferQueueFamilyIndex = graphicsQueueFamilyIndex;
     if (it_transfer_queue != queueFamilyProperties.end()) {
@@ -227,7 +233,7 @@ VulkanContainerFields initialize_vulkan(bool enable_validation_layers) {
         queueCreateInfos.push_back(
             {.queueFamilyIndex = transferQueueFamilyIndex,
              .queueCount = 1,
-             .pQueuePriorities = &queuePriority});
+             .pQueuePriorities = queuePriorities.data()});
     }
 
     vk::PhysicalDeviceFeatures deviceFeatures{
@@ -244,16 +250,21 @@ VulkanContainerFields initialize_vulkan(bool enable_validation_layers) {
 
     vk::raii::Device device(physicalDevice, deviceCreateInfo);
 
-    vk::raii::Queue graphics_queue{device, graphicsQueueFamilyIndex, 0};
+    std::vector<vk::raii::Queue> graphics_queues;
+    for(uint32_t i = 0; i < num_graphics_queues; ++i) {
+        graphics_queues.push_back(vk::raii::Queue(device, graphicsQueueFamilyIndex, i));
+    }
     vk::raii::Queue transfer_queue{device, transferQueueFamilyIndex, 0};
 
     // Create command pool and buffers
-    vk::CommandPoolCreateInfo commandPoolCreateInfo{
-        .flags = vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
-        .queueFamilyIndex = graphicsQueueFamilyIndex,
-    };
+    std::vector<vk::raii::CommandPool> commandPools;
+    for(uint32_t i = 0; i < num_graphics_queues; ++i) {
+        commandPools.push_back(vk::raii::CommandPool(device, {
+            .flags = vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
+            .queueFamilyIndex = graphicsQueueFamilyIndex,
+        }));
+    }
 
-    vk::raii::CommandPool commandPool(device, commandPoolCreateInfo);
     vk::raii::CommandPool transferCommandPool(
         device,
         {
@@ -266,9 +277,9 @@ VulkanContainerFields initialize_vulkan(bool enable_validation_layers) {
         std::move(instance),
         std::move(physicalDevice),
         std::move(device),
-        std::move(graphics_queue),
+        std::move(graphics_queues),
         std::move(transfer_queue),
-        std::move(commandPool),
+        std::move(commandPools),
         std::move(transferCommandPool),
         std::move(debugUtilsMessenger)
     };

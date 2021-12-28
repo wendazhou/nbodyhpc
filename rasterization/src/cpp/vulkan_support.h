@@ -18,9 +18,9 @@ struct VulkanContainerFields {
     vk::raii::Instance instance_;
     vk::raii::PhysicalDevice physical_device_;
     vk::raii::Device device_;
-    vk::raii::Queue queue_;
+    std::vector<vk::raii::Queue> queues_;
     vk::raii::Queue transfer_queue_;
-    vk::raii::CommandPool command_pool_;
+    std::vector<vk::raii::CommandPool> command_pools_;
     vk::raii::CommandPool transfer_command_pool_;
     std::optional<vk::raii::DebugUtilsMessengerEXT> debug_messenger_;
 };
