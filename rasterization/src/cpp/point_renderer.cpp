@@ -421,7 +421,7 @@ void read_buffer_strided(vk::raii::DeviceMemory const& memory, It output, uint32
 /** Builds up the command buffer to render the point cloud.
  * 
  */
-void build_point_render_commands(vk::raii::CommandBuffer& command_buffer, PointRendererImpl const& renderer, vk::Buffer const& vertex_buffer, uint32_t num_vertices, uint32_t grid_size, float box_size, float plane_depth) {
+void build_point_render_commands(vk::raii::CommandBuffer& command_buffer, PointRendererImpl const& renderer, vk::Buffer const& vertex_buffer, uint32_t grid_size, float box_size, float plane_depth, uint32_t num_vertices, uint32_t first_vertex) {
     uint32_t width = grid_size;
     uint32_t height = grid_size;
 
@@ -480,7 +480,7 @@ void build_point_render_commands(vk::raii::CommandBuffer& command_buffer, PointR
         vk::ShaderStageFlagBits::eVertex,
         0,
         {sizeof(push_constants_data), reinterpret_cast<char *>(&push_constants_data)});
-    command_buffer.draw(num_vertices, 1, 0, 0);
+    command_buffer.draw(num_vertices, 1, first_vertex, 0);
 
     command_buffer.endRenderPass();
 }
@@ -558,7 +558,7 @@ void PointRenderer::render_points(tcb::span<const Vertex> points, tcb::span<floa
 
     command_buffer.begin({});
 
-    build_point_render_commands(command_buffer, *impl_, *vertex_buffer, points.size(), grid_size_, box_size_, 0.0f);
+    build_point_render_commands(command_buffer, *impl_, *vertex_buffer, grid_size_, box_size_, 0.0f, points.size(), 0);
     build_image_transfer_commands(command_buffer, *impl_, impl_->readout_image_, grid_size_);
 
     command_buffer.end();
@@ -644,18 +644,30 @@ void PointRenderer::render_points_volume(tcb::span<const Vertex> points, tcb::sp
 
     auto &command_buffer = impl_->command_buffer_;
 
+    float max_radius = std::max_element(points.begin(), points.end(), [](Vertex const& a, Vertex const& b) { return a.radius < b.radius; })->radius;
 
     for (int i = 0; i < grid_size_; ++i) {
         if (should_stop()) {
             break;
         }
 
+        // compute section of vertices that will be rendered in this pass.
+        float plane_depth = (static_cast<float>(i) + 0.5f) / grid_size_ * box_size_;
+        float plane_lower_bound = static_cast<float>(i) * box_size_ / grid_size_ - max_radius;
+        float plane_upper_bound = static_cast<float>(i + 1) * box_size_ / grid_size_ + max_radius;
+
+        auto it_start = std::lower_bound(points.begin(), points.end(), plane_lower_bound, [](Vertex const& v, float b) { return v.position[2] < b; });
+        auto it_end = std::upper_bound(points.begin(), points.end(), plane_upper_bound, [](float a, Vertex const& v) { return a < v.position[2]; });
+
+        uint32_t vertex_start = std::distance(points.begin(), it_start);
+        uint32_t vertex_end = std::distance(points.begin(), it_end);
+
         auto transfer_image = transfer_images.get_image();
 
         command_buffer.begin({});
 
-        build_point_render_commands(command_buffer, *impl_, *vertexBuffer, points.size(), grid_size_, box_size_,
-                                    ((static_cast<float>(i) + 0.5f) / grid_size_) * box_size_);
+        build_point_render_commands(command_buffer, *impl_, *vertexBuffer, grid_size_, box_size_,
+                                    ((static_cast<float>(i) + 0.5f) / grid_size_) * box_size_, vertex_end - vertex_start, vertex_start);
         build_image_transfer_commands(command_buffer, *impl_, transfer_image, grid_size_);
 
         command_buffer.end();

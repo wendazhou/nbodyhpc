@@ -89,7 +89,9 @@ void render_points_from_file(uint32_t grid_size, const char *filepath) {
 
     std::cout << "Average radius: " << total_radius / num_points << std::endl;
 
-
+    std::sort(vertices.begin(), vertices.end(), [](wenda::vulkan::Vertex const &a, wenda::vulkan::Vertex const &b) {
+        return a.position[2] < b.position[2];
+    });
     auto result = render_vertices(25.0f, grid_size, vertices);
 
     std::vector<float> result_out(grid_size * grid_size);

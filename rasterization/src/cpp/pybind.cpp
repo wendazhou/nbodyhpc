@@ -59,6 +59,11 @@ std::vector<wenda::vulkan::Vertex> assemble_vertices(
         vertices[i].radius = radii_view(i);
     }
 
+    std::sort(vertices.begin(), vertices.end(),
+              [](wenda::vulkan::Vertex const &a, wenda::vulkan::Vertex const &b) {
+                  return a.position[2] < b.position[2];
+              });
+
     return vertices;
 }
 
