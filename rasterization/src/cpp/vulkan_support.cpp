@@ -3,52 +3,52 @@
 #include <iostream>
 #include <sstream>
 
-namespace wenda { namespace vulkan {
+namespace wenda {
+namespace vulkan {
 
 namespace {
-    std::tuple<vk::raii::Image, vk::raii::DeviceMemory> create_memory_backed_image(
-        vk::raii::Device const& device, vk::ImageCreateInfo const& image_info,
-        vk::PhysicalDeviceMemoryProperties const& memory_properties,
-        vk::MemoryPropertyFlags memory_property_flags)
-    {
-        vk::raii::Image image(device, image_info);
-        auto memory_requirements = image.getMemoryRequirements();
-        vk::raii::DeviceMemory memory(device, {
-            .allocationSize = memory_requirements.size,
-            .memoryTypeIndex = wenda::vulkan::determine_memory_type_index(
-                memory_requirements, memory_properties, memory_property_flags)
-        });
+std::tuple<vk::raii::Image, vk::raii::DeviceMemory> create_memory_backed_image(
+    vk::raii::Device const &device, vk::ImageCreateInfo const &image_info,
+    vk::PhysicalDeviceMemoryProperties const &memory_properties,
+    vk::MemoryPropertyFlags memory_property_flags) {
+    vk::raii::Image image(device, image_info);
+    auto memory_requirements = image.getMemoryRequirements();
+    vk::raii::DeviceMemory memory(
+        device,
+        {.allocationSize = memory_requirements.size,
+         .memoryTypeIndex = wenda::vulkan::determine_memory_type_index(
+             memory_requirements, memory_properties, memory_property_flags)});
 
-        image.bindMemory(*memory, 0);
-        return std::make_tuple(std::move(image), std::move(memory));
-    }
+    image.bindMemory(*memory, 0);
+    return std::make_tuple(std::move(image), std::move(memory));
 }
+} // namespace
 
 MemoryBackedImage::MemoryBackedImage(
-        vk::raii::Device const &device, vk::ImageCreateInfo const &image_info,
-        vk::PhysicalDeviceMemoryProperties const &memory_properties,
-        vk::MemoryPropertyFlags memory_property_flags)
-        : MemoryBackedImage(create_memory_backed_image(device, image_info, memory_properties, memory_property_flags)) {}
+    vk::raii::Device const &device, vk::ImageCreateInfo const &image_info,
+    vk::PhysicalDeviceMemoryProperties const &memory_properties,
+    vk::MemoryPropertyFlags memory_property_flags)
+    : MemoryBackedImage(create_memory_backed_image(
+          device, image_info, memory_properties, memory_property_flags)) {}
 
 MemoryBackedImage::MemoryBackedImage(std::tuple<vk::raii::Image, vk::raii::DeviceMemory> data)
-: image_(std::move(std::get<0>(data))), memory_(std::move(std::get<1>(data))) {}
-
+    : image_(std::move(std::get<0>(data))), memory_(std::move(std::get<1>(data))) {}
 
 MemoryBackedImageView::MemoryBackedImageView(
-        vk::raii::Device const &device, vk::ImageCreateInfo const& image_info,
-        vk::ImageViewCreateInfo const &view_info,
-        vk::PhysicalDeviceMemoryProperties const &memory_properties,
-        vk::MemoryPropertyFlags memory_property_flags)
+    vk::raii::Device const &device, vk::ImageCreateInfo const &image_info,
+    vk::ImageViewCreateInfo const &view_info,
+    vk::PhysicalDeviceMemoryProperties const &memory_properties,
+    vk::MemoryPropertyFlags memory_property_flags)
     : MemoryBackedImage(device, image_info, memory_properties, memory_property_flags),
-    view_(vk::raii::ImageView(device, [this](vk::ImageViewCreateInfo info) {
-        info.image = *image_;
-        return info;
-    }(view_info))) {}
+      view_(vk::raii::ImageView(device, [this](vk::ImageViewCreateInfo info) {
+          info.image = *image_;
+          return info;
+      }(view_info))) {}
 
-
-uint32_t determine_memory_type_index(vk::MemoryRequirements const &memoryRequirements,
-                                  vk::PhysicalDeviceMemoryProperties const &memoryProperties,
-                                  vk::MemoryPropertyFlags memoryPropertyFlags) {
+uint32_t determine_memory_type_index(
+    vk::MemoryRequirements const &memoryRequirements,
+    vk::PhysicalDeviceMemoryProperties const &memoryProperties,
+    vk::MemoryPropertyFlags memoryPropertyFlags) {
     uint32_t typeIndex = uint32_t(~0);
     uint32_t typeBits = memoryRequirements.memoryTypeBits;
 
@@ -73,20 +73,14 @@ uint32_t determine_memory_type_index(vk::MemoryRequirements const &memoryRequire
 
 namespace {
 
-
-VKAPI_ATTR VkBool32 VKAPI_CALL
-vulkan_debug_message_func(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
-                 VkDebugUtilsMessageTypeFlagsEXT messageTypes,
-                 VkDebugUtilsMessengerCallbackDataEXT const *pCallbackData,
-                 void * /*pUserData*/) {
+VKAPI_ATTR VkBool32 VKAPI_CALL vulkan_debug_message_func(
+    VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+    VkDebugUtilsMessageTypeFlagsEXT messageTypes,
+    VkDebugUtilsMessengerCallbackDataEXT const *pCallbackData, void * /*pUserData*/) {
     std::ostringstream message;
 
-    message << vk::to_string(
-                   static_cast<vk::DebugUtilsMessageSeverityFlagBitsEXT>(
-                       messageSeverity))
-            << ": "
-            << vk::to_string(
-                   static_cast<vk::DebugUtilsMessageTypeFlagsEXT>(messageTypes))
+    message << vk::to_string(static_cast<vk::DebugUtilsMessageSeverityFlagBitsEXT>(messageSeverity))
+            << ": " << vk::to_string(static_cast<vk::DebugUtilsMessageTypeFlagsEXT>(messageTypes))
             << ":\n";
     message << "\t"
             << "messageIDName   = <" << pCallbackData->pMessageIdName << ">\n";
@@ -99,8 +93,7 @@ vulkan_debug_message_func(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity
                 << "Queue Labels:\n";
         for (uint8_t i = 0; i < pCallbackData->queueLabelCount; i++) {
             message << "\t\t"
-                    << "labelName = <"
-                    << pCallbackData->pQueueLabels[i].pLabelName << ">\n";
+                    << "labelName = <" << pCallbackData->pQueueLabels[i].pLabelName << ">\n";
         }
     }
     if (0 < pCallbackData->cmdBufLabelCount) {
@@ -108,8 +101,7 @@ vulkan_debug_message_func(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity
                 << "CommandBuffer Labels:\n";
         for (uint8_t i = 0; i < pCallbackData->cmdBufLabelCount; i++) {
             message << "\t\t"
-                    << "labelName = <"
-                    << pCallbackData->pCmdBufLabels[i].pLabelName << ">\n";
+                    << "labelName = <" << pCallbackData->pCmdBufLabels[i].pLabelName << ">\n";
         }
     }
     if (0 < pCallbackData->objectCount) {
@@ -120,16 +112,14 @@ vulkan_debug_message_func(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity
                     << "Object " << i << "\n";
             message << "\t\t\t"
                     << "objectType   = "
-                    << vk::to_string(static_cast<vk::ObjectType>(
-                           pCallbackData->pObjects[i].objectType))
+                    << vk::to_string(
+                           static_cast<vk::ObjectType>(pCallbackData->pObjects[i].objectType))
                     << "\n";
             message << "\t\t\t"
-                    << "objectHandle = "
-                    << pCallbackData->pObjects[i].objectHandle << "\n";
+                    << "objectHandle = " << pCallbackData->pObjects[i].objectHandle << "\n";
             if (pCallbackData->pObjects[i].pObjectName) {
                 message << "\t\t\t"
-                        << "objectName   = <"
-                        << pCallbackData->pObjects[i].pObjectName << ">\n";
+                        << "objectName   = <" << pCallbackData->pObjects[i].pObjectName << ">\n";
             }
         }
     }
@@ -139,8 +129,8 @@ vulkan_debug_message_func(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity
     return false;
 }
 
-
-vk::raii::DebugUtilsMessengerEXT create_debug_util_messenger_extension(vk::raii::Instance const &instance) {
+vk::raii::DebugUtilsMessengerEXT
+create_debug_util_messenger_extension(vk::raii::Instance const &instance) {
     vk::DebugUtilsMessageSeverityFlagsEXT severityFlags(
         vk::DebugUtilsMessageSeverityFlagBitsEXT::eInfo |
         vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning |
@@ -157,16 +147,20 @@ vk::raii::DebugUtilsMessengerEXT create_debug_util_messenger_extension(vk::raii:
     return vk::raii::DebugUtilsMessengerEXT(instance, debugUtilsMessengerCreateInfoEXT);
 }
 
-
-std::tuple<vk::raii::Context, vk::raii::Instance, vk::raii::PhysicalDevice, vk::raii::Device, vk::raii::Queue, vk::raii::CommandPool, std::optional<vk::raii::DebugUtilsMessengerEXT>> initialize_vulkan(bool enable_validation_layers) {
+std::tuple<
+    vk::raii::Context, vk::raii::Instance, vk::raii::PhysicalDevice, vk::raii::Device,
+    vk::raii::Queue, vk::raii::Queue, vk::raii::CommandPool, vk::raii::CommandPool,
+    std::optional<vk::raii::DebugUtilsMessengerEXT>>
+initialize_vulkan(bool enable_validation_layers) {
     // Create Vulkan instance, context + device
     vk::raii::Context context;
 
-    vk::ApplicationInfo appInfo{.pApplicationName = "Hello Triangle",
-                                .applicationVersion = VK_MAKE_VERSION(1, 0, 0),
-                                .pEngineName = "No Engine",
-                                .engineVersion = VK_MAKE_VERSION(1, 0, 0),
-                                .apiVersion = VK_API_VERSION_1_0};
+    vk::ApplicationInfo appInfo{
+        .pApplicationName = "Hello Triangle",
+        .applicationVersion = VK_MAKE_VERSION(1, 0, 0),
+        .pEngineName = "No Engine",
+        .engineVersion = VK_MAKE_VERSION(1, 0, 0),
+        .apiVersion = VK_API_VERSION_1_0};
 
     const char *validationLayers[] = {"VK_LAYER_KHRONOS_validation"};
     uint32_t layerCount = 0;
@@ -184,11 +178,12 @@ std::tuple<vk::raii::Context, vk::raii::Instance, vk::raii::PhysicalDevice, vk::
         extensionCount = 1;
     }
 
-    vk::InstanceCreateInfo instanceCreateInfo{.pApplicationInfo = &appInfo,
-                                              .enabledLayerCount = layerCount,
-                                              .ppEnabledLayerNames = validationLayers,
-                                              .enabledExtensionCount = extensionCount,
-                                              .ppEnabledExtensionNames = extensions};
+    vk::InstanceCreateInfo instanceCreateInfo{
+        .pApplicationInfo = &appInfo,
+        .enabledLayerCount = layerCount,
+        .ppEnabledLayerNames = validationLayers,
+        .enabledExtensionCount = extensionCount,
+        .ppEnabledExtensionNames = extensions};
 
     vk::raii::Instance instance{context, instanceCreateInfo};
 
@@ -203,28 +198,49 @@ std::tuple<vk::raii::Context, vk::raii::Instance, vk::raii::PhysicalDevice, vk::
     auto physicalDevice = std::move(physicalDevices[0]);
 
     auto const &queueFamilyProperties = physicalDevice.getQueueFamilyProperties();
-    auto it_queue = std::find_if(queueFamilyProperties.begin(), queueFamilyProperties.end(),
-                                 [](vk::QueueFamilyProperties const &qfp) {
-                                     return qfp.queueFlags & vk::QueueFlagBits::eGraphics;
-                                 });
+    auto it_graphics_queue = std::find_if(
+        queueFamilyProperties.begin(),
+        queueFamilyProperties.end(),
+        [](vk::QueueFamilyProperties const &qfp) {
+            return qfp.queueFlags & vk::QueueFlagBits::eGraphics;
+        });
+
+    auto it_transfer_queue = std::find_if(
+        queueFamilyProperties.begin(),
+        queueFamilyProperties.end(),
+        [](vk::QueueFamilyProperties const &qfp) {
+            return (qfp.queueFlags & vk::QueueFlagBits::eTransfer) &&
+                   !(qfp.queueFlags & vk::QueueFlagBits::eGraphics);
+        });
+
     uint32_t graphicsQueueFamilyIndex =
-        static_cast<uint32_t>(std::distance(queueFamilyProperties.begin(), it_queue));
+        static_cast<uint32_t>(std::distance(queueFamilyProperties.begin(), it_graphics_queue));
 
     float queuePriority = 1.0f;
+    std::vector<vk::DeviceQueueCreateInfo> queueCreateInfos;
+    queueCreateInfos.push_back(
+        {.queueFamilyIndex = graphicsQueueFamilyIndex,
+         .queueCount = 1,
+         .pQueuePriorities = &queuePriority});
 
-    vk::DeviceQueueCreateInfo deviceQueueCreateInfo{
-        .queueFamilyIndex = graphicsQueueFamilyIndex,
-        .queueCount = 1,
-        .pQueuePriorities = &queuePriority,
-    };
+    uint32_t transferQueueFamilyIndex = graphicsQueueFamilyIndex;
+    if (it_transfer_queue != queueFamilyProperties.end()) {
+        // if there is a separate transfer queue, make use of it
+        transferQueueFamilyIndex =
+            static_cast<uint32_t>(std::distance(queueFamilyProperties.begin(), it_transfer_queue));
+        queueCreateInfos.push_back(
+            {.queueFamilyIndex = transferQueueFamilyIndex,
+             .queueCount = 1,
+             .pQueuePriorities = &queuePriority});
+    }
 
-    vk::PhysicalDeviceFeatures deviceFeatures {
+    vk::PhysicalDeviceFeatures deviceFeatures{
         .shaderClipDistance = true,
     };
 
     vk::DeviceCreateInfo deviceCreateInfo{
-        .queueCreateInfoCount = 1,
-        .pQueueCreateInfos = &deviceQueueCreateInfo,
+        .queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size()),
+        .pQueueCreateInfos = queueCreateInfos.data(),
         .enabledLayerCount = layerCount,
         .ppEnabledLayerNames = validationLayers,
         .pEnabledFeatures = &deviceFeatures,
@@ -232,7 +248,8 @@ std::tuple<vk::raii::Context, vk::raii::Instance, vk::raii::PhysicalDevice, vk::
 
     vk::raii::Device device(physicalDevice, deviceCreateInfo);
 
-    vk::raii::Queue queue{device, graphicsQueueFamilyIndex, 0};
+    vk::raii::Queue graphics_queue{device, graphicsQueueFamilyIndex, 0};
+    vk::raii::Queue transfer_queue{device, transferQueueFamilyIndex, 0};
 
     // Create command pool and buffers
     vk::CommandPoolCreateInfo commandPoolCreateInfo{
@@ -241,22 +258,40 @@ std::tuple<vk::raii::Context, vk::raii::Instance, vk::raii::PhysicalDevice, vk::
     };
 
     vk::raii::CommandPool commandPool(device, commandPoolCreateInfo);
+    vk::raii::CommandPool transferCommandPool(
+        device,
+        {
+            .flags = vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
+            .queueFamilyIndex = transferQueueFamilyIndex,
+        });
 
-    return std::make_tuple(std::move(context), std::move(instance), std::move(physicalDevice), std::move(device), std::move(queue), std::move(commandPool), std::move(debugUtilsMessenger));
+    return std::make_tuple(
+        std::move(context),
+        std::move(instance),
+        std::move(physicalDevice),
+        std::move(device),
+        std::move(graphics_queue),
+        std::move(transfer_queue),
+        std::move(commandPool),
+        std::move(transferCommandPool),
+        std::move(debugUtilsMessenger));
 }
 
-}
+} // namespace
 
-VulkanContainer::VulkanContainer(bool enable_validation_layers) : VulkanContainer(initialize_vulkan(enable_validation_layers)) {}
-VulkanContainer::VulkanContainer(std::tuple<vk::raii::Context, vk::raii::Instance, vk::raii::PhysicalDevice,
-                    vk::raii::Device, vk::raii::Queue, vk::raii::CommandPool, std::optional<vk::raii::DebugUtilsMessengerEXT>> data) :
-    context_(std::move(std::get<0>(data))),
-    instance_(std::move(std::get<1>(data))),
-    physical_device_(std::move(std::get<2>(data))),
-    device_(std::move(std::get<3>(data))),
-    queue_(std::move(std::get<4>(data))),
-    command_pool_(std::move(std::get<5>(data))),
-    debug_messenger_(std::move(std::get<6>(data))) {
-    }
+VulkanContainer::VulkanContainer(bool enable_validation_layers)
+    : VulkanContainer(initialize_vulkan(enable_validation_layers)) {}
+VulkanContainer::VulkanContainer(
+    std::tuple<
+        vk::raii::Context, vk::raii::Instance, vk::raii::PhysicalDevice, vk::raii::Device,
+        vk::raii::Queue, vk::raii::Queue, vk::raii::CommandPool, vk::raii::CommandPool,
+        std::optional<vk::raii::DebugUtilsMessengerEXT>>
+        data)
+    : context_(std::move(std::get<0>(data))), instance_(std::move(std::get<1>(data))),
+      physical_device_(std::move(std::get<2>(data))), device_(std::move(std::get<3>(data))),
+      queue_(std::move(std::get<4>(data))), transfer_queue_(std::move(std::get<5>(data))),
+      command_pool_(std::move(std::get<6>(data))), transfer_command_pool_(std::move(std::get<7>(data))),
+      debug_messenger_(std::move(std::get<8>(data))) {}
 
-}}
+} // namespace vulkan
+} // namespace wenda

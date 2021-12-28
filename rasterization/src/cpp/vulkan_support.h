@@ -18,18 +18,21 @@ namespace vulkan {
  */
 class VulkanContainer {
   public:
-    const vk::raii::Context context_;
-    const vk::raii::Instance instance_;
-    const vk::raii::PhysicalDevice physical_device_;
-    const vk::raii::Device device_;
-    const vk::raii::Queue queue_;
-    const vk::raii::CommandPool command_pool_;
-    const std::optional<vk::raii::DebugUtilsMessengerEXT> debug_messenger_;
+    vk::raii::Context context_;
+    vk::raii::Instance instance_;
+    vk::raii::PhysicalDevice physical_device_;
+    vk::raii::Device device_;
+    vk::raii::Queue queue_;
+    vk::raii::Queue transfer_queue_;
+    vk::raii::CommandPool command_pool_;
+    vk::raii::CommandPool transfer_command_pool_;
+    std::optional<vk::raii::DebugUtilsMessengerEXT> debug_messenger_;
 
   protected:
     VulkanContainer(std::tuple<
                     vk::raii::Context, vk::raii::Instance, vk::raii::PhysicalDevice,
-                    vk::raii::Device, vk::raii::Queue, vk::raii::CommandPool,
+                    vk::raii::Device, vk::raii::Queue, vk::raii::Queue, vk::raii::CommandPool,
+                    vk::raii::CommandPool,
                     std::optional<vk::raii::DebugUtilsMessengerEXT>>);
 
   public:

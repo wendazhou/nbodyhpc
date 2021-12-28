@@ -3,9 +3,9 @@
 #include "shaders/triangle.frag.spv.h"
 #include "shaders/triangle.vert.spv.h"
 
-#include <map>
 #include <fstream>
 #include <limits>
+#include <map>
 #include <mutex>
 #include <queue>
 
@@ -326,14 +326,13 @@ PointRendererImpl make_point_renderer(VulkanContainer const &container, uint32_t
 }
 
 /** Submit work to the given queue, and block until it is complete.
- * 
+ *
  */
-void submit_work(vk::raii::Device const& device, vk::raii::Queue const& queue, vk::SubmitInfo info) {
+void submit_work(
+    vk::raii::Device const &device, vk::raii::Queue const &queue, vk::SubmitInfo info) {
     auto fence = device.createFence({});
 
-    queue.submit(
-        {info},
-        *fence);
+    queue.submit({info}, *fence);
 
     auto wait_result = device.waitForFences(
         {
@@ -343,15 +342,18 @@ void submit_work(vk::raii::Device const& device, vk::raii::Queue const& queue, v
         std::numeric_limits<uint64_t>::max());
 }
 
-/** Copies the vertex data into a vertex buffer, staging the data through a temporary staging buffer.
- * 
+/** Copies the vertex data into a vertex buffer, staging the data through a temporary staging
+ * buffer.
+ *
  */
-std::tuple<vk::raii::Buffer, vk::raii::DeviceMemory> stage_to_vertex_buffer(VulkanContainer const& container, tcb::span<const Vertex> vertices) {
+std::tuple<vk::raii::Buffer, vk::raii::DeviceMemory>
+stage_to_vertex_buffer(VulkanContainer const &container, tcb::span<const Vertex> vertices) {
     vk::DeviceSize vertexBufferSize = vertices.size_bytes();
 
     vk::raii::Buffer vertexBuffer(
         container.device_,
-        {.size = vertexBufferSize, .usage = vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eTransferDst});
+        {.size = vertexBufferSize,
+         .usage = vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eTransferDst});
 
     vk::raii::Buffer staging_buffer(
         container.device_,
@@ -368,7 +370,8 @@ std::tuple<vk::raii::Buffer, vk::raii::DeviceMemory> stage_to_vertex_buffer(Vulk
             .memoryTypeIndex = wenda::vulkan::determine_memory_type_index(
                 staging_memory_requirements,
                 memory_properties,
-                vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent),
+                vk::MemoryPropertyFlagBits::eHostVisible |
+                    vk::MemoryPropertyFlagBits::eHostCoherent),
         });
     staging_buffer.bindMemory(*staging_memory, 0);
 
@@ -384,29 +387,31 @@ std::tuple<vk::raii::Buffer, vk::raii::DeviceMemory> stage_to_vertex_buffer(Vulk
     wenda::vulkan::copy_to_device_memory(vertices.begin(), vertices.end(), staging_memory);
 
     vk::raii::CommandBuffers copy_command_buffers(
-        container.device_,
-        {.commandPool = *container.command_pool_, .commandBufferCount = 1});
-    auto& command_buffer = copy_command_buffers[0];
+        container.device_, {.commandPool = *container.transfer_command_pool_, .commandBufferCount = 1});
+    auto &command_buffer = copy_command_buffers[0];
 
     command_buffer.begin({.flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
     command_buffer.copyBuffer(
-        *staging_buffer,
-        *vertexBuffer,
-        {vk::BufferCopy{.size = vertexBufferSize}});
+        *staging_buffer, *vertexBuffer, {vk::BufferCopy{.size = vertexBufferSize}});
     command_buffer.end();
 
-    submit_work(container.device_, container.queue_, {.commandBufferCount = 1, .pCommandBuffers = &(*command_buffer)});
+    submit_work(
+        container.device_,
+        container.transfer_queue_,
+        {.commandBufferCount = 1, .pCommandBuffers = &(*command_buffer)});
 
     return std::make_tuple(std::move(vertexBuffer), std::move(vertex_buffer_memory));
 }
 
-template<typename It>
-void read_buffer_strided(vk::raii::DeviceMemory const& memory, It output, uint32_t grid_size, vk::SubresourceLayout const& layout) {
+template <typename It>
+void read_buffer_strided(
+    vk::raii::DeviceMemory const &memory, It output, uint32_t grid_size,
+    vk::SubresourceLayout const &layout) {
     typedef typename std::iterator_traits<It>::value_type T;
 
     auto row_pitch_elements = layout.rowPitch / sizeof(T);
 
-    T* data = static_cast<T *>(memory.mapMemory(0, VK_WHOLE_SIZE)) + layout.offset;
+    T *data = static_cast<T *>(memory.mapMemory(0, VK_WHOLE_SIZE)) + layout.offset;
 
     for (int y = 0; y < grid_size; ++y) {
         std::copy(
@@ -419,9 +424,12 @@ void read_buffer_strided(vk::raii::DeviceMemory const& memory, It output, uint32
 }
 
 /** Builds up the command buffer to render the point cloud.
- * 
+ *
  */
-void build_point_render_commands(vk::raii::CommandBuffer& command_buffer, PointRendererImpl const& renderer, vk::Buffer const& vertex_buffer, uint32_t grid_size, float box_size, float plane_depth, uint32_t num_vertices, uint32_t first_vertex) {
+void build_point_render_commands(
+    vk::raii::CommandBuffer &command_buffer, PointRendererImpl const &renderer,
+    vk::Buffer const &vertex_buffer, uint32_t grid_size, float box_size, float plane_depth,
+    uint32_t num_vertices, uint32_t first_vertex) {
     uint32_t width = grid_size;
     uint32_t height = grid_size;
 
@@ -485,7 +493,9 @@ void build_point_render_commands(vk::raii::CommandBuffer& command_buffer, PointR
     command_buffer.endRenderPass();
 }
 
-void build_image_transfer_commands(vk::raii::CommandBuffer& command_buffer, PointRendererImpl const& renderer, MemoryBackedImage const& readout_image, uint32_t grid_size) {
+void build_image_transfer_commands(
+    vk::raii::CommandBuffer &command_buffer, PointRendererImpl const &renderer,
+    MemoryBackedImage const &readout_image, uint32_t grid_size) {
     command_buffer.pipelineBarrier(
         vk::PipelineStageFlagBits::eTransfer,
         vk::PipelineStageFlagBits::eTransfer,
@@ -535,7 +545,6 @@ void build_image_transfer_commands(vk::raii::CommandBuffer& command_buffer, Poin
         }});
 }
 
-
 } // namespace
 
 PointRenderer::PointRenderer(VulkanContainer const &container, float box_size, uint32_t grid_size)
@@ -558,12 +567,16 @@ void PointRenderer::render_points(tcb::span<const Vertex> points, tcb::span<floa
 
     command_buffer.begin({});
 
-    build_point_render_commands(command_buffer, *impl_, *vertex_buffer, grid_size_, box_size_, 0.0f, points.size(), 0);
+    build_point_render_commands(
+        command_buffer, *impl_, *vertex_buffer, grid_size_, box_size_, 0.0f, points.size(), 0);
     build_image_transfer_commands(command_buffer, *impl_, impl_->readout_image_, grid_size_);
 
     command_buffer.end();
 
-    submit_work(container_.device_, container_.queue_, {.commandBufferCount = 1, .pCommandBuffers = &(*command_buffer)});
+    submit_work(
+        container_.device_,
+        container_.queue_,
+        {.commandBufferCount = 1, .pCommandBuffers = &(*command_buffer)});
 
     vk::SubresourceLayout dstImageLayout =
         impl_->readout_image_.image_.getSubresourceLayout({vk::ImageAspectFlagBits::eColor, 0, 0});
@@ -574,16 +587,17 @@ namespace {
 
 /** Thread-safe collection of transfer images.
  * This can be used to copy from different target images in a round-robin fashion.
- * 
+ *
  */
 class TransferImagePool {
     std::queue<MemoryBackedImage> images_;
     std::mutex mutex_;
     std::condition_variable cv_;
 
-public:
-    TransferImagePool(vk::raii::Device const &device, vk::PhysicalDeviceMemoryProperties const& memory_properties, uint32_t grid_size, uint32_t num_images)
-    {
+  public:
+    TransferImagePool(
+        vk::raii::Device const &device, vk::PhysicalDeviceMemoryProperties const &memory_properties,
+        uint32_t grid_size, uint32_t num_images) {
         vk::ImageCreateInfo transfer_image_info{
             .imageType = vk::ImageType::e2D,
             .format = vk::Format::eR32Sfloat,
@@ -597,7 +611,12 @@ public:
         };
 
         for (uint32_t i = 0; i < num_images; ++i) {
-            images_.emplace(device, transfer_image_info, memory_properties, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+            images_.emplace(
+                device,
+                transfer_image_info,
+                memory_properties,
+                vk::MemoryPropertyFlagBits::eHostVisible |
+                    vk::MemoryPropertyFlagBits::eHostCoherent);
         }
     }
 
@@ -615,7 +634,7 @@ public:
         }
     }
 
-    void return_image(MemoryBackedImage&& image) {
+    void return_image(MemoryBackedImage &&image) {
         {
             std::lock_guard<std::mutex> lock(mutex_);
             images_.push(std::move(image));
@@ -624,29 +643,154 @@ public:
     }
 };
 
-}
+class CommandBufferTracker {
+    vk::raii::Device const &device_;
+    std::queue<vk::raii::CommandBuffer> free_command_buffers_;
 
-void PointRenderer::render_points_volume(tcb::span<const Vertex> points, tcb::span<float> result, std::function<bool()> const& should_stop) {
+    std::vector<vk::raii::Fence> in_flight_fences_;
+    std::vector<vk::raii::CommandBuffer> in_flight_command_buffers_;
+    std::vector<std::function<void()>> in_flight_tasks_;
+
+  public:
+    CommandBufferTracker(
+        vk::raii::Device const &device, vk::raii::CommandPool const &pool,
+        uint32_t num_command_buffers)
+        : device_(device) {
+        vk::raii::CommandBuffers initial_command_buffers(
+            device,
+            {
+                .commandPool = *pool,
+                .level = vk::CommandBufferLevel::ePrimary,
+                .commandBufferCount = num_command_buffers,
+            });
+
+        for (auto &command_buffer : initial_command_buffers) {
+            free_command_buffers_.push(std::move(command_buffer));
+        }
+    }
+
+    bool has_command_buffer() { return !free_command_buffers_.empty(); }
+
+    vk::raii::CommandBuffer get_command_buffer() {
+        auto result = std::move(free_command_buffers_.front());
+        free_command_buffers_.pop();
+        return std::move(result);
+    }
+
+    void queue_buffer_submission(
+        vk::raii::Queue const &queue, vk::raii::CommandBuffer &&buffer,
+        std::function<void()> when_done) {
+        auto fence = device_.createFence({});
+        queue.submit(
+            {vk::SubmitInfo{.commandBufferCount = 1, .pCommandBuffers = &(*buffer)}}, *fence);
+
+        in_flight_fences_.push_back(std::move(fence));
+        in_flight_command_buffers_.push_back(std::move(buffer));
+        in_flight_tasks_.push_back(std::move(when_done));
+    }
+
+    bool check_fences() {
+        bool any_fences_complete = false;
+
+        for (int i = in_flight_fences_.size() - 1; i >= 0; --i) {
+            if (in_flight_fences_[i].getStatus() != vk::Result::eSuccess) {
+                continue;
+            }
+
+            // fence has been signaled
+
+            // Invoke callback
+            in_flight_tasks_[i]();
+
+            // Reset all state
+            free_command_buffers_.push(std::move(in_flight_command_buffers_[i]));
+
+            auto fence = std::move(in_flight_fences_[i]);
+
+            in_flight_fences_.erase(in_flight_fences_.begin() + i);
+            in_flight_command_buffers_.erase(in_flight_command_buffers_.begin() + i);
+            in_flight_tasks_.erase(in_flight_tasks_.begin() + i);
+
+            any_fences_complete = true;
+        }
+
+        return any_fences_complete;
+    }
+
+    bool wait_for_fences(bool wait_for_all, std::function<bool()> const &should_stop) {
+        if (in_flight_fences_.empty()) {
+            return true;
+        }
+
+        std::vector<vk::Fence> fences(in_flight_fences_.size());
+        std::transform(
+            in_flight_fences_.begin(), in_flight_fences_.end(), fences.begin(), [](auto &f) {
+                return *f;
+            });
+
+        while (device_.waitForFences(fences, wait_for_all, 20 * 1000 * 1000) !=
+               vk::Result::eSuccess) {
+            if (should_stop()) {
+                return false;
+            }
+        }
+
+        check_fences();
+
+        return true;
+    }
+
+    int num_tasks_in_flight() const { return in_flight_tasks_.size(); }
+};
+
+} // namespace
+
+void PointRenderer::render_points_volume(
+    tcb::span<const Vertex> points, tcb::span<float> result,
+    std::function<bool()> const &should_stop) {
     if (result.size() < grid_size_ * grid_size_ * grid_size_) {
         throw std::runtime_error("result buffer too small");
     }
 
-    auto num_parallel_transfers = std::min({uint32_t(std::thread::hardware_concurrency()), uint32_t(grid_size_)});
+    auto num_parallel_transfers =
+        std::min({uint32_t(std::thread::hardware_concurrency()), uint32_t(grid_size_)});
+    if (num_parallel_transfers == 0) {
+        num_parallel_transfers = 1;
+    }
 
-    TransferImagePool transfer_images(container_.device_, container_.physical_device_.getMemoryProperties(), grid_size_, num_parallel_transfers);
+    // Set-up resources for multi-threaded readback
+    // These resources need to be synchronized as they will be accessed from multiple threads
+    TransferImagePool transfer_images(
+        container_.device_,
+        container_.physical_device_.getMemoryProperties(),
+        grid_size_,
+        num_parallel_transfers);
     thread_pool pool(num_parallel_transfers);
 
     std::map<int, MemoryBackedImage> transfer_images_map;
     std::mutex transfer_images_map_mutex;
 
+    // Set-up resources for multiple submissions in flight.
+    CommandBufferTracker command_buffers(
+        container_.device_, container_.command_pool_, num_parallel_transfers);
+
     // set-up vertex buffer
     auto const [vertexBuffer, vertexBufferMemory] = stage_to_vertex_buffer(container_, points);
 
-    auto &command_buffer = impl_->command_buffer_;
-
-    float max_radius = std::max_element(points.begin(), points.end(), [](Vertex const& a, Vertex const& b) { return a.radius < b.radius; })->radius;
+    float max_radius =
+        std::max_element(points.begin(), points.end(), [](Vertex const &a, Vertex const &b) {
+            return a.radius < b.radius;
+        })->radius;
 
     for (int i = 0; i < grid_size_; ++i) {
+        // obtain command buffer for this slice
+        if (!command_buffers.has_command_buffer()) {
+            // wait for at least a single command buffer
+            command_buffers.wait_for_fences(false, should_stop);
+        }
+
+        auto command_buffer = command_buffers.get_command_buffer();
+
         if (should_stop()) {
             break;
         }
@@ -656,8 +800,14 @@ void PointRenderer::render_points_volume(tcb::span<const Vertex> points, tcb::sp
         float plane_lower_bound = static_cast<float>(i) * box_size_ / grid_size_ - max_radius;
         float plane_upper_bound = static_cast<float>(i + 1) * box_size_ / grid_size_ + max_radius;
 
-        auto it_start = std::lower_bound(points.begin(), points.end(), plane_lower_bound, [](Vertex const& v, float b) { return v.position[2] < b; });
-        auto it_end = std::upper_bound(points.begin(), points.end(), plane_upper_bound, [](float a, Vertex const& v) { return a < v.position[2]; });
+        auto it_start = std::lower_bound(
+            points.begin(), points.end(), plane_lower_bound, [](Vertex const &v, float b) {
+                return v.position[2] < b;
+            });
+        auto it_end = std::upper_bound(
+            points.begin(), points.end(), plane_upper_bound, [](float a, Vertex const &v) {
+                return a < v.position[2];
+            });
 
         uint32_t vertex_start = std::distance(points.begin(), it_start);
         uint32_t vertex_end = std::distance(points.begin(), it_end);
@@ -666,45 +816,58 @@ void PointRenderer::render_points_volume(tcb::span<const Vertex> points, tcb::sp
 
         command_buffer.begin({});
 
-        build_point_render_commands(command_buffer, *impl_, *vertexBuffer, grid_size_, box_size_,
-                                    ((static_cast<float>(i) + 0.5f) / grid_size_) * box_size_, vertex_end - vertex_start, vertex_start);
+        build_point_render_commands(
+            command_buffer,
+            *impl_,
+            *vertexBuffer,
+            grid_size_,
+            box_size_,
+            plane_depth,
+            vertex_end - vertex_start,
+            vertex_start);
         build_image_transfer_commands(command_buffer, *impl_, transfer_image, grid_size_);
 
         command_buffer.end();
-
-        submit_work(container_.device_, container_.queue_, {.commandBufferCount = 1, .pCommandBuffers = &(*command_buffer)});
 
         {
             std::scoped_lock lock(transfer_images_map_mutex);
             transfer_images_map.insert({i, std::move(transfer_image)});
         }
 
-        pool.push_task([&, i] () {
-            std::optional<MemoryBackedImage> transfer_image;
+        command_buffers.queue_buffer_submission(
+            container_.queue_, std::move(command_buffer), [&, i]() {
+                pool.push_task([&, i]() {
+                    std::optional<MemoryBackedImage> transfer_image;
 
-            {
-                std::scoped_lock lock(transfer_images_map_mutex);
-                auto transfer_image_it = transfer_images_map.find(i);
-                transfer_image = std::move(transfer_image_it->second);
-                transfer_images_map.erase(transfer_image_it);
-            }
+                    {
+                        std::scoped_lock lock(transfer_images_map_mutex);
+                        auto transfer_image_it = transfer_images_map.find(i);
+                        transfer_image = std::move(transfer_image_it->second);
+                        transfer_images_map.erase(transfer_image_it);
+                    }
 
-            vk::SubresourceLayout dstImageLayout =
-                transfer_image->image_.getSubresourceLayout({vk::ImageAspectFlagBits::eColor, 0, 0});
-            read_buffer_strided(transfer_image->memory_, result.data() + i * grid_size_ * grid_size_, grid_size_,
-                                dstImageLayout);
-            transfer_images.return_image(std::move(*transfer_image));
-        });
+                    vk::SubresourceLayout dstImageLayout =
+                        transfer_image->image_.getSubresourceLayout(
+                            {vk::ImageAspectFlagBits::eColor, 0, 0});
+                    read_buffer_strided(
+                        transfer_image->memory_,
+                        result.data() + i * grid_size_ * grid_size_,
+                        grid_size_,
+                        dstImageLayout);
+                    transfer_images.return_image(std::move(*transfer_image));
+                });
+            });
+
+        command_buffers.check_fences();
     }
 
+    command_buffers.wait_for_fences(true, should_stop);
     pool.wait_for_tasks();
 }
 
 namespace util {
-    bool always_false() noexcept {
-        return false;
-    }
-}
+bool always_false() noexcept { return false; }
+} // namespace util
 
 } // namespace vulkan
 } // namespace wenda
