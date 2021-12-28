@@ -32,13 +32,12 @@ struct PointRenderingPushConstants {
 
 namespace {
 
-struct TargetTransferPairData {
+struct RenderTargetData {
     MemoryBackedImageView target_;
-    MemoryBackedImage transfer_;
     vk::raii::Framebuffer framebuffer_;
 };
 
-TargetTransferPairData make_target_transfer_pair(
+RenderTargetData make_render_target_data(
     vk::raii::Device const &device, vk::raii::RenderPass const &render_pass,
     vk::PhysicalDeviceMemoryProperties const &memory_properties, uint32_t size) {
     vk::ImageCreateInfo image_info{
@@ -70,15 +69,6 @@ TargetTransferPairData make_target_transfer_pair(
         memory_properties,
         vk::MemoryPropertyFlagBits::eDeviceLocal);
 
-    image_info.tiling = vk::ImageTiling::eLinear;
-    image_info.usage = vk::ImageUsageFlagBits::eTransferDst;
-
-    MemoryBackedImage transfer(
-        device,
-        image_info,
-        memory_properties,
-        vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
-
     vk::raii::Framebuffer framebuffer(
         device,
         {
@@ -90,70 +80,41 @@ TargetTransferPairData make_target_transfer_pair(
             .layers = 1,
         });
 
-    return {std::move(target), std::move(transfer), std::move(framebuffer)};
+    return {std::move(target), std::move(framebuffer)};
 }
 
-class TargetTransferPair : public TargetTransferPairData {
-    uint32_t grid_size_;
-
+class RenderTarget : public RenderTargetData {
   public:
-    TargetTransferPair(
+    const uint32_t grid_size_;
+
+    RenderTarget(
         vk::raii::Device const &device, vk::raii::RenderPass const &render_pass,
         vk::PhysicalDeviceMemoryProperties const &memory_properties, uint32_t grid_size)
-        : TargetTransferPairData(
-              make_target_transfer_pair(device, render_pass, memory_properties, grid_size)),
+        : RenderTargetData(
+              make_render_target_data(device, render_pass, memory_properties, grid_size)),
           grid_size_(grid_size) {}
-
-    void build_image_transfer_command(vk::raii::CommandBuffer &command_buffer) {
-        command_buffer.pipelineBarrier(
-            vk::PipelineStageFlagBits::eTransfer,
-            vk::PipelineStageFlagBits::eTransfer,
-            vk::DependencyFlags(),
-            {},
-            {},
-            {vk::ImageMemoryBarrier{
-                .srcAccessMask = vk::AccessFlagBits(),
-                .dstAccessMask = vk::AccessFlagBits::eTransferWrite,
-                .oldLayout = vk::ImageLayout::eUndefined,
-                .newLayout = vk::ImageLayout::eTransferDstOptimal,
-                .image = *transfer_.image_,
-                .subresourceRange =
-                    {
-                        .aspectMask = vk::ImageAspectFlagBits::eColor,
-                        .baseMipLevel = 0,
-                        .levelCount = 1,
-                        .baseArrayLayer = 0,
-                        .layerCount = 1,
-                    },
-            }});
-
-        command_buffer.copyImage(
-            *target_.image_,
-            vk::ImageLayout::eTransferSrcOptimal,
-            *transfer_.image_,
-            vk::ImageLayout::eTransferDstOptimal,
-            {vk::ImageCopy{
-                .srcSubresource = {vk::ImageAspectFlagBits::eColor, 0, 0, 1},
-                .dstSubresource = {vk::ImageAspectFlagBits::eColor, 0, 0, 1},
-                .extent = {grid_size_, grid_size_, 1},
-            }});
-
-        command_buffer.pipelineBarrier(
-            vk::PipelineStageFlagBits::eTransfer,
-            vk::PipelineStageFlagBits::eTransfer,
-            vk::DependencyFlags(),
-            {},
-            {},
-            {vk::ImageMemoryBarrier{
-                .srcAccessMask = vk::AccessFlagBits::eTransferWrite,
-                .dstAccessMask = vk::AccessFlagBits::eMemoryRead,
-                .oldLayout = vk::ImageLayout::eTransferDstOptimal,
-                .newLayout = vk::ImageLayout::eGeneral,
-                .image = *transfer_.image_,
-                .subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1},
-            }});
-    }
 };
+
+MemoryBackedImage make_transfer_image(
+    vk::raii::Device const &device, vk::PhysicalDeviceMemoryProperties const &memory_properties,
+    uint32_t grid_size) {
+    return MemoryBackedImage(
+        device,
+        {
+            .imageType = vk::ImageType::e2D,
+            .format = vk::Format::eR32Sfloat,
+            .extent = {grid_size, grid_size, 1},
+            .mipLevels = 1,
+            .arrayLayers = 1,
+            .samples = vk::SampleCountFlagBits::e1,
+            .tiling = vk::ImageTiling::eLinear,
+            .usage = vk::ImageUsageFlagBits::eTransferDst,
+            .sharingMode = vk::SharingMode::eExclusive,
+            .initialLayout = vk::ImageLayout::eUndefined,
+        },
+        memory_properties,
+        vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+}
 
 vk::raii::RenderPass create_render_pass(vk::raii::Device const &device, vk::Format colorFormat) {
     // Color attachment
@@ -555,6 +516,58 @@ void build_point_render_commands(
     command_buffer.endRenderPass();
 }
 
+void build_image_transfer_command(
+    vk::raii::CommandBuffer &command_buffer, RenderTarget const &render_target,
+    MemoryBackedImage const &transfer_target) {
+    command_buffer.pipelineBarrier(
+        vk::PipelineStageFlagBits::eTransfer,
+        vk::PipelineStageFlagBits::eTransfer,
+        vk::DependencyFlags(),
+        {},
+        {},
+        {vk::ImageMemoryBarrier{
+            .srcAccessMask = vk::AccessFlagBits(),
+            .dstAccessMask = vk::AccessFlagBits::eTransferWrite,
+            .oldLayout = vk::ImageLayout::eUndefined,
+            .newLayout = vk::ImageLayout::eTransferDstOptimal,
+            .image = *transfer_target.image_,
+            .subresourceRange =
+                {
+                    .aspectMask = vk::ImageAspectFlagBits::eColor,
+                    .baseMipLevel = 0,
+                    .levelCount = 1,
+                    .baseArrayLayer = 0,
+                    .layerCount = 1,
+                },
+        }});
+
+    command_buffer.copyImage(
+        *render_target.target_.image_,
+        vk::ImageLayout::eTransferSrcOptimal,
+        *transfer_target.image_,
+        vk::ImageLayout::eTransferDstOptimal,
+        {vk::ImageCopy{
+            .srcSubresource = {vk::ImageAspectFlagBits::eColor, 0, 0, 1},
+            .dstSubresource = {vk::ImageAspectFlagBits::eColor, 0, 0, 1},
+            .extent = {render_target.grid_size_, render_target.grid_size_, 1},
+        }});
+
+    command_buffer.pipelineBarrier(
+        vk::PipelineStageFlagBits::eTransfer,
+        vk::PipelineStageFlagBits::eTransfer,
+        vk::DependencyFlags(),
+        {},
+        {},
+        {vk::ImageMemoryBarrier{
+            .srcAccessMask = vk::AccessFlagBits::eTransferWrite,
+            .dstAccessMask = vk::AccessFlagBits::eMemoryRead,
+            .oldLayout = vk::ImageLayout::eTransferDstOptimal,
+            .newLayout = vk::ImageLayout::eGeneral,
+            .image = *transfer_target.image_,
+            .subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1},
+        }});
+}
+
 } // namespace
 
 PointRenderer::PointRenderer(VulkanContainer const &container, float box_size, uint32_t grid_size)
@@ -572,11 +585,10 @@ void PointRenderer::render_points(tcb::span<const Vertex> points, tcb::span<floa
     auto const [vertex_buffer, vertex_buffer_memory] = stage_to_vertex_buffer(container_, points);
 
     // set-up framebuffer
-    TargetTransferPair target_pair(
-        container_.device_,
-        impl_->render_pass_,
-        container_.physical_device_.getMemoryProperties(),
-        grid_size_);
+    auto memory_properties = container_.physical_device_.getMemoryProperties();
+    RenderTarget render_target(
+        container_.device_, impl_->render_pass_, memory_properties, grid_size_);
+    auto transfer_image = make_transfer_image(container_.device_, memory_properties, grid_size_);
 
     vk::raii::CommandBuffers command_buffers(
         container_.device_,
@@ -593,14 +605,14 @@ void PointRenderer::render_points(tcb::span<const Vertex> points, tcb::span<floa
     build_point_render_commands(
         command_buffer,
         *impl_,
-        *target_pair.framebuffer_,
+        *render_target.framebuffer_,
         *vertex_buffer,
         grid_size_,
         box_size_,
         0.0f,
         points.size(),
         0);
-    target_pair.build_image_transfer_command(command_buffer);
+    build_image_transfer_command(command_buffer, render_target, transfer_image);
 
     command_buffer.end();
 
@@ -610,8 +622,8 @@ void PointRenderer::render_points(tcb::span<const Vertex> points, tcb::span<floa
         {.commandBufferCount = 1, .pCommandBuffers = &(*command_buffer)});
 
     vk::SubresourceLayout dstImageLayout =
-        target_pair.transfer_.image_.getSubresourceLayout({vk::ImageAspectFlagBits::eColor, 0, 0});
-    read_buffer_strided(target_pair.transfer_.memory_, result.data(), grid_size_, dstImageLayout);
+        transfer_image.image_.getSubresourceLayout({vk::ImageAspectFlagBits::eColor, 0, 0});
+    read_buffer_strided(transfer_image.memory_, result.data(), grid_size_, dstImageLayout);
 }
 
 namespace {
@@ -621,22 +633,21 @@ namespace {
  *
  */
 class TransferImagePool {
-    std::queue<TargetTransferPair> images_;
+    std::queue<MemoryBackedImage> images_;
     std::mutex mutex_;
     std::condition_variable cv_;
 
   public:
     TransferImagePool(
-        vk::raii::Device const &device, vk::raii::RenderPass const &render_pass,
-        vk::PhysicalDeviceMemoryProperties const &memory_properties, uint32_t grid_size,
-        uint32_t num_images) {
+        vk::raii::Device const &device, vk::PhysicalDeviceMemoryProperties const &memory_properties,
+        uint32_t grid_size, uint32_t num_images) {
 
         for (uint32_t i = 0; i < num_images; ++i) {
-            images_.emplace(device, render_pass, memory_properties, grid_size);
+            images_.push(make_transfer_image(device, memory_properties, grid_size));
         }
     }
 
-    TargetTransferPair get_image() {
+    MemoryBackedImage get_image() {
         std::unique_lock<std::mutex> lock(mutex_, std::try_to_lock);
 
         while (true) {
@@ -650,7 +661,7 @@ class TransferImagePool {
         }
     }
 
-    void return_image(TargetTransferPair &&image) {
+    void return_image(MemoryBackedImage &&image) {
         {
             std::lock_guard<std::mutex> lock(mutex_);
             images_.push(std::move(image));
@@ -671,16 +682,18 @@ class CommandBufferTracker {
 
     std::vector<vk::raii::Queue const *> queues_;
     std::vector<vk::raii::CommandBuffer> command_buffers_;
+    std::vector<RenderTarget> render_targets_;
 
     std::vector<vk::raii::Fence> in_flight_fences_;
     std::vector<std::function<void()>> in_flight_tasks_;
     std::vector<CommandQueuePairToken> in_flight_pairs_;
 
   public:
-    CommandBufferTracker(VulkanContainer const &container, uint32_t num_queues)
+    CommandBufferTracker(
+        VulkanContainer const &container, vk::raii::RenderPass const &render_pass, uint32_t grid_size)
         : device_(container.device_), queues_(container.queues_.size()) {
 
-        for(int i = 0; i < std::min({uint32_t(queues_.size()), num_queues}); ++i) {
+        for (int i = 0; i < queues_.size(); ++i) {
             queues_[i] = &container.queues_[i];
             vk::raii::CommandBuffers queueCommandBuffers(
                 device_,
@@ -689,25 +702,33 @@ class CommandBufferTracker {
                     .commandBufferCount = 1,
                 });
             command_buffers_.push_back(std::move(queueCommandBuffers[0]));
+            render_targets_.emplace_back(
+                container.device_,
+                render_pass,
+                container.physical_device_.getMemoryProperties(),
+                grid_size);
             available_pairs_.push({i});
         }
-
     }
 
     bool has_command_buffer() { return !available_pairs_.empty(); }
 
-    std::pair<vk::raii::CommandBuffer&, CommandQueuePairToken> get_command_buffer() {
+    std::tuple<vk::raii::CommandBuffer &, RenderTarget &, CommandQueuePairToken>
+    get_command_buffer() {
         auto token = available_pairs_.front();
         available_pairs_.pop();
 
-        return {command_buffers_[token.pair_index_], token};
+        return {command_buffers_[token.pair_index_], render_targets_[token.pair_index_], token};
     }
 
     void queue_buffer_submission(CommandQueuePairToken token, std::function<void()> when_done) {
         auto fence = device_.createFence({});
         auto queue = queues_[token.pair_index_];
         queue->submit(
-            {vk::SubmitInfo{.commandBufferCount = 1, .pCommandBuffers = &(*command_buffers_[token.pair_index_])}}, *fence);
+            {vk::SubmitInfo{
+                .commandBufferCount = 1,
+                .pCommandBuffers = &(*command_buffers_[token.pair_index_])}},
+            *fence);
 
         in_flight_fences_.push_back(std::move(fence));
         in_flight_pairs_.push_back(std::move(token));
@@ -777,7 +798,7 @@ void PointRenderer::render_points_volume(
     }
 
     auto num_parallel_transfers =
-        std::min({uint32_t(std::thread::hardware_concurrency()), uint32_t(grid_size_), uint32_t(container_.queues_.size())});
+        std::min({uint32_t(std::thread::hardware_concurrency()), uint32_t(grid_size_)});
     if (num_parallel_transfers == 0) {
         num_parallel_transfers = 1;
     }
@@ -786,17 +807,16 @@ void PointRenderer::render_points_volume(
     // These resources need to be synchronized as they will be accessed from multiple threads
     TransferImagePool transfer_images(
         container_.device_,
-        impl_->render_pass_,
         container_.physical_device_.getMemoryProperties(),
         grid_size_,
         num_parallel_transfers);
     thread_pool pool(num_parallel_transfers);
 
-    std::map<int, TargetTransferPair> transfer_images_map;
+    std::map<int, MemoryBackedImage> transfer_images_map;
     std::mutex transfer_images_map_mutex;
 
     // Set-up resources for multiple submissions in flight.
-    CommandBufferTracker command_buffers(container_, num_parallel_transfers);
+    CommandBufferTracker command_buffers(container_, impl_->render_pass_, grid_size_);
 
     // set-up vertex buffer
     auto const [vertexBuffer, vertexBufferMemory] = stage_to_vertex_buffer(container_, points);
@@ -813,7 +833,7 @@ void PointRenderer::render_points_volume(
             command_buffers.wait_for_fences(false, should_stop);
         }
 
-        auto [command_buffer, token] = command_buffers.get_command_buffer();
+        auto [command_buffer, render_target, token] = command_buffers.get_command_buffer();
 
         if (should_stop()) {
             break;
@@ -843,15 +863,14 @@ void PointRenderer::render_points_volume(
         build_point_render_commands(
             command_buffer,
             *impl_,
-            *transfer_image.framebuffer_,
+            *render_target.framebuffer_,
             *vertexBuffer,
             grid_size_,
             box_size_,
             plane_depth,
             vertex_end - vertex_start,
             vertex_start);
-        transfer_image.build_image_transfer_command(command_buffer);
-
+        build_image_transfer_command(command_buffer, render_target, transfer_image);
         command_buffer.end();
 
         {
@@ -859,29 +878,27 @@ void PointRenderer::render_points_volume(
             transfer_images_map.insert({i, std::move(transfer_image)});
         }
 
-        command_buffers.queue_buffer_submission(
-            token, [&, i]() {
-                pool.push_task([&, i]() {
-                    std::optional<TargetTransferPair> transfer_image;
+        command_buffers.queue_buffer_submission(token, [&, i]() {
+            pool.push_task([&, i]() {
+                std::optional<MemoryBackedImage> transfer_image;
 
-                    {
-                        std::scoped_lock lock(transfer_images_map_mutex);
-                        auto transfer_image_it = transfer_images_map.find(i);
-                        transfer_image = std::move(transfer_image_it->second);
-                        transfer_images_map.erase(transfer_image_it);
-                    }
+                {
+                    std::scoped_lock lock(transfer_images_map_mutex);
+                    auto transfer_image_it = transfer_images_map.find(i);
+                    transfer_image = std::move(transfer_image_it->second);
+                    transfer_images_map.erase(transfer_image_it);
+                }
 
-                    vk::SubresourceLayout dstImageLayout =
-                        transfer_image->transfer_.image_.getSubresourceLayout(
-                            {vk::ImageAspectFlagBits::eColor, 0, 0});
-                    read_buffer_strided(
-                        transfer_image->transfer_.memory_,
-                        result.data() + i * grid_size_ * grid_size_,
-                        grid_size_,
-                        dstImageLayout);
-                    transfer_images.return_image(std::move(*transfer_image));
-                });
+                vk::SubresourceLayout dstImageLayout = transfer_image->image_.getSubresourceLayout(
+                    {vk::ImageAspectFlagBits::eColor, 0, 0});
+                read_buffer_strided(
+                    transfer_image->memory_,
+                    result.data() + i * grid_size_ * grid_size_,
+                    grid_size_,
+                    dstImageLayout);
+                transfer_images.return_image(std::move(*transfer_image));
             });
+        });
 
         command_buffers.check_fences();
     }

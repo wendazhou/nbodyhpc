@@ -216,7 +216,7 @@ VulkanContainerFields initialize_vulkan(bool enable_validation_layers) {
 
     std::vector<vk::DeviceQueueCreateInfo> queueCreateInfos;
 
-    uint32_t num_graphics_queues = it_graphics_queue->queueCount;
+    uint32_t num_graphics_queues = std::min(it_graphics_queue->queueCount, 8u);
     std::vector<float> queuePriorities(num_graphics_queues, queuePriority);
 
     queueCreateInfos.push_back(
