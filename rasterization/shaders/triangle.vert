@@ -42,6 +42,13 @@ void main()
 	float volume = 4. / 3. * radians(180) * out_radius * out_radius * out_radius;
 
 	if (out_radius < 0.5) {
+		// point is smaller than a pixel,
+		// we snap to closest pixel center.
+		if (abs(z_offset) * line_element > 0.5) {
+			gl_ClipDistance[0] = -1;
+			return;
+		}
+
 		outDensity = inWeight;
 		gl_PointSize = 1;
 	}
