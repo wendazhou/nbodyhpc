@@ -43,6 +43,9 @@ public:
 
     void render_points(tcb::span<const Vertex> points, tcb::span<float> result);
     void render_points_volume(tcb::span<const Vertex> points, tcb::span<float> result, std::function<bool()> const& should_stop = util::always_false);
+
+    float box_size() const noexcept { return box_size_; }
+    uint32_t grid_size() const noexcept { return grid_size_; }
 };
 
 } // namespace vulkan

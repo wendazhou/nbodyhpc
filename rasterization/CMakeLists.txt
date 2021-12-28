@@ -17,23 +17,32 @@ if(SKBUILD)
         OUTPUT_STRIP_TRAILING_WHITESPACE COMMAND_ECHO STDOUT)
     list(APPEND CMAKE_PREFIX_PATH "${_tmp_dir}")
     find_package(pybind11 CONFIG REQUIRED)
+
+    # Disable shader compilation when using SKBUILD
+    set(ENABLE_SHADER_COMPILATION 0)
 else()
     # Use vendored pybind11 when building outside of setup.py
     add_subdirectory(../third_party/pybind11 ${CMAKE_CURRENT_BINARY_DIR}/third_party/pybind11)
+
+    set(ENABLE_SHADER_COMPILATION 1)
 endif()
 
 find_package(Vulkan REQUIRED)
-find_program(glslc_executable NAMES glslc HINTS Vulkan::glslc)
-find_program(xxd_executable NAMES xxd)
-
 find_package(Threads REQUIRED)
 
-if (xxd_executable STREQUAL "xxd_executable-NOTFOUND" OR glslc_executable STREQUAL "glslc_executable-NOTFOUND")
-    message(WARNING "Could not find glslc or xxd, disabling shader compilation.")
-    set(ENABLE_SHADER_COMPILATION 0)
-else()
-    set(ENABLE_SHADER_COMPILATION 1)
+if (ENABLE_SHADER_COMPILATION)
+    # If we are trying to compile shaders, find required programs
+    find_program(glslc_executable NAMES glslc HINTS Vulkan::glslc)
+    find_program(xxd_executable NAMES xxd)
+
+    if (xxd_executable STREQUAL "xxd_executable-NOTFOUND" OR glslc_executable STREQUAL "glslc_executable-NOTFOUND")
+        message(WARNING "Could not find glslc or xxd, disabling shader compilation.")
+        set(ENABLE_SHADER_COMPILATION 0)
+    else()
+        set(ENABLE_SHADER_COMPILATION 1)
+    endif()
 endif()
+
 
 function(add_spirv_shader INPUT_FILE)
     if (NOT ENABLE_SHADER_COMPILATION)

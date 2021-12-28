@@ -28,12 +28,12 @@ void main()
 	// this is also used to check whether the point is inside the plane being rendered.
 	float z_offset = inPos.z - pushConsts.planeDepth;
 
-	//gl_ClipDistance[0] = line_element * (inRadius - abs(z_offset)) + 1;
+	gl_ClipDistance[0] = line_element * (inRadius - abs(z_offset)) + 1;
 
-	//if (gl_ClipDistance[0] < 0)
-	//{
-	//	return;
-	//}
+	if (gl_ClipDistance[0] < 0)
+	{
+		return;
+	}
 
 	float out_radius = inRadius * line_element;
 

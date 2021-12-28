@@ -10,17 +10,17 @@ except ImportError:
     )
     raise
 
-from setuptools import find_packages
+from setuptools import find_namespace_packages
 
 setup(
-    name="scikit_build_example",
+    name="nbodyhpc-rasterizer",
     version="0.0.1",
     description="A fast rasterizer for estimating fields from point clouds",
     author="Wenda Zhou",
     license="MIT",
-    packages=find_packages(where="src/python"),
+    packages=find_namespace_packages(where="src/python", include=["nbodyhpc.*"]),
     package_dir={"": "src/python"},
-    cmake_install_dir="src/python/rasterizer",
+    cmake_install_dir="src/python/nbodyhpc/rasterizer",
     include_package_data=True,
     extras_require={"test": ["pytest"]},
     python_requires=">=3.6",
