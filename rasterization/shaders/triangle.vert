@@ -44,7 +44,10 @@ void main()
 	if (out_radius < 0.5) {
 		// point is smaller than a pixel,
 		// we snap to closest pixel center.
-		if (abs(z_offset) * line_element > 0.5) {
+		float z_distance = z_offset * line_element;
+
+		// break ties by choosing lower pixel
+		if (z_distance > 0.5 || z_distance <= -0.5) {
 			gl_ClipDistance[0] = -1;
 			return;
 		}
