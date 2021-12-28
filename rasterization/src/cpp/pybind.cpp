@@ -137,7 +137,8 @@ PYBIND11_MODULE(_impl, m) {
             }),
             py::arg("container"),
             py::arg("grid_size"),
-            py::arg("subsample_factor") = 4)
+            py::arg("subsample_factor") = 4,
+            py::keep_alive<1, 2>{})
         .def_property_readonly("grid_size", &wenda::vulkan::PointRenderer::grid_size)
         .def(
             "render_points",
