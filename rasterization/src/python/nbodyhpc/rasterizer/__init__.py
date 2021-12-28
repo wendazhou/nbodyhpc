@@ -14,13 +14,13 @@ def get_default_container():
 
 
 @functools.lru_cache(maxsize=None)
-def get_point_renderer(box_size: float, grid_size: int, subsample_factor: int=4, container: VulkanContainer=None) -> PointRenderer:
+def get_point_renderer(grid_size: int, subsample_factor: int=4, container: VulkanContainer=None) -> PointRenderer:
     if container is None:
         container = get_default_container()
-        return get_point_renderer(box_size, grid_size, subsample_factor, container)
-    return PointRenderer(container, box_size, grid_size, subsample_factor)
+        return get_point_renderer(grid_size, subsample_factor, container)
+    return PointRenderer(container, grid_size, subsample_factor)
 
 
-def render_points_volume(positions: np.ndarray, weights: np.ndarray, radii: np.ndarray, box_size: float, grid_size: int, subsample_factor: int=4):
-    renderer = get_point_renderer(box_size, grid_size, subsample_factor)
-    return renderer.render_points_volume(positions, weights, radii)
+def render_points_volume(positions: np.ndarray, weights: np.ndarray, radii: np.ndarray, box_size: float, grid_size: int, periodic: bool=False, subsample_factor: int=4):
+    renderer = get_point_renderer(grid_size, subsample_factor)
+    return renderer.render_points_volume(positions, weights, radii, box_size, periodic)
