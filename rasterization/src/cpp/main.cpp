@@ -34,8 +34,8 @@ void save_png_grayscale(tcb::span<float> data, uint32_t grid_size, std::string c
 std::vector<float>
 render_vertices(float box_size, uint32_t grid_size, std::vector<wenda::vulkan::Vertex> vertices) {
     // Create Vulkan instance, context + device
-    wenda::vulkan::VulkanContainer vulkan;
-    wenda::vulkan::PointRenderer renderer(vulkan, {.grid_size = grid_size});
+    wenda::vulkan::VulkanContainer vulkan(false);
+    wenda::vulkan::PointRenderer renderer(vulkan, {.grid_size = grid_size, .subsample_factor = 4});
 
     std::vector<float> result(grid_size * grid_size * grid_size);
 
@@ -59,7 +59,7 @@ void render_single_sphere(uint32_t grid_size) {
     // Create Vulkan instance, context + device
     auto result = render_vertices(1.0f, grid_size, vertices);
 
-    auto total_sum = std::reduce(result.begin(), result.end());
+    auto total_sum = std::reduce(result.begin(), result.end(), 0.0);
     std::cout << "Total weight: " << total_sum << std::endl;
 
     auto total_pixels = std::transform_reduce(
@@ -109,7 +109,7 @@ void render_points_from_file(uint32_t grid_size, const char *filepath) {
     auto input_mass = std::transform_reduce(
         vertices.begin(),
         vertices.end(),
-        0.0f,
+        0.0,
         std::plus<>(),
         [](wenda::vulkan::Vertex const &v) { return v.weight; });
 
@@ -123,8 +123,11 @@ void render_points_from_file(uint32_t grid_size, const char *filepath) {
 
     auto result = render_vertices(box_size, grid_size, vertices);
 
-    auto rendered_mass = std::reduce(result.begin(), result.end());
+    // need higher precision for the total sum
+    auto rendered_mass = std::reduce(result.begin(), result.end(), 0.0);
 
+    std::cout << "Mass initial: " << input_mass << std::endl;
+    std::cout << "Mass rendered: " << rendered_mass << std::endl;
     std::cout << "Mass reconstruction: " << rendered_mass / input_mass << std::endl;
 
     std::vector<float> result_out(grid_size * grid_size);
