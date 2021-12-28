@@ -152,7 +152,7 @@ VulkanContainerFields initialize_vulkan(bool enable_validation_layers) {
     vk::raii::Context context;
 
     vk::ApplicationInfo appInfo{
-        .pApplicationName = "Hello Triangle",
+        .pApplicationName = "NbodyhpcRasterizer",
         .applicationVersion = VK_MAKE_VERSION(1, 0, 0),
         .pEngineName = "No Engine",
         .engineVersion = VK_MAKE_VERSION(1, 0, 0),
