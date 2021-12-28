@@ -39,8 +39,8 @@ struct TargetTransferPairData {
 };
 
 TargetTransferPairData make_target_transfer_pair(
-    vk::raii::Device const &device, vk::raii::RenderPass const& render_pass, vk::PhysicalDeviceMemoryProperties const &memory_properties,
-    uint32_t size) {
+    vk::raii::Device const &device, vk::raii::RenderPass const &render_pass,
+    vk::PhysicalDeviceMemoryProperties const &memory_properties, uint32_t size) {
     vk::ImageCreateInfo image_info{
         .imageType = vk::ImageType::e2D,
         .format = vk::Format::eR32Sfloat,
@@ -79,14 +79,16 @@ TargetTransferPairData make_target_transfer_pair(
         memory_properties,
         vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
 
-    vk::raii::Framebuffer framebuffer(device, {
-        .renderPass = *render_pass,
-        .attachmentCount = 1,
-        .pAttachments = &(*target.view_),
-        .width = size,
-        .height = size,
-        .layers = 1,
-    });
+    vk::raii::Framebuffer framebuffer(
+        device,
+        {
+            .renderPass = *render_pass,
+            .attachmentCount = 1,
+            .pAttachments = &(*target.view_),
+            .width = size,
+            .height = size,
+            .layers = 1,
+        });
 
     return {std::move(target), std::move(transfer), std::move(framebuffer)};
 }
@@ -96,9 +98,10 @@ class TargetTransferPair : public TargetTransferPairData {
 
   public:
     TargetTransferPair(
-        vk::raii::Device const &device, vk::raii::RenderPass const& render_pass, vk::PhysicalDeviceMemoryProperties const &memory_properties,
-        uint32_t grid_size)
-        : TargetTransferPairData(make_target_transfer_pair(device, render_pass, memory_properties, grid_size)),
+        vk::raii::Device const &device, vk::raii::RenderPass const &render_pass,
+        vk::PhysicalDeviceMemoryProperties const &memory_properties, uint32_t grid_size)
+        : TargetTransferPairData(
+              make_target_transfer_pair(device, render_pass, memory_properties, grid_size)),
           grid_size_(grid_size) {}
 
     void build_image_transfer_command(vk::raii::CommandBuffer &command_buffer) {
@@ -487,9 +490,8 @@ void read_buffer_strided(
  */
 void build_point_render_commands(
     vk::raii::CommandBuffer &command_buffer, PointRendererImpl const &renderer,
-    vk::Framebuffer const &framebuffer,
-    vk::Buffer const &vertex_buffer, uint32_t grid_size, float box_size, float plane_depth,
-    uint32_t num_vertices, uint32_t first_vertex) {
+    vk::Framebuffer const &framebuffer, vk::Buffer const &vertex_buffer, uint32_t grid_size,
+    float box_size, float plane_depth, uint32_t num_vertices, uint32_t first_vertex) {
     uint32_t width = grid_size;
     uint32_t height = grid_size;
 
@@ -570,7 +572,11 @@ void PointRenderer::render_points(tcb::span<const Vertex> points, tcb::span<floa
     auto const [vertex_buffer, vertex_buffer_memory] = stage_to_vertex_buffer(container_, points);
 
     // set-up framebuffer
-    TargetTransferPair target_pair(container_.device_, impl_->render_pass_, container_.physical_device_.getMemoryProperties(), grid_size_);
+    TargetTransferPair target_pair(
+        container_.device_,
+        impl_->render_pass_,
+        container_.physical_device_.getMemoryProperties(),
+        grid_size_);
 
     vk::raii::CommandBuffers command_buffers(
         container_.device_,
@@ -584,7 +590,16 @@ void PointRenderer::render_points(tcb::span<const Vertex> points, tcb::span<floa
 
     command_buffer.begin({});
 
-    build_point_render_commands(command_buffer, *impl_, *target_pair.framebuffer_, *vertex_buffer, grid_size_, box_size_, 0.0f, points.size(), 0);
+    build_point_render_commands(
+        command_buffer,
+        *impl_,
+        *target_pair.framebuffer_,
+        *vertex_buffer,
+        grid_size_,
+        box_size_,
+        0.0f,
+        points.size(),
+        0);
     target_pair.build_image_transfer_command(command_buffer);
 
     command_buffer.end();
@@ -612,8 +627,9 @@ class TransferImagePool {
 
   public:
     TransferImagePool(
-        vk::raii::Device const &device, vk::raii::RenderPass const& render_pass, vk::PhysicalDeviceMemoryProperties const &memory_properties,
-        uint32_t grid_size, uint32_t num_images) {
+        vk::raii::Device const &device, vk::raii::RenderPass const &render_pass,
+        vk::PhysicalDeviceMemoryProperties const &memory_properties, uint32_t grid_size,
+        uint32_t num_images) {
 
         for (uint32_t i = 0; i < num_images; ++i) {
             images_.emplace(device, render_pass, memory_properties, grid_size);
@@ -644,48 +660,57 @@ class TransferImagePool {
 };
 
 class CommandBufferTracker {
+  public:
+    struct CommandQueuePairToken {
+        int pair_index_;
+    };
+
+  private:
     vk::raii::Device const &device_;
-    std::queue<vk::raii::CommandBuffer> free_command_buffers_;
+    std::queue<CommandQueuePairToken> available_pairs_;
+
+    std::vector<vk::raii::Queue const *> queues_;
+    std::vector<vk::raii::CommandBuffer> command_buffers_;
 
     std::vector<vk::raii::Fence> in_flight_fences_;
-    std::vector<vk::raii::CommandBuffer> in_flight_command_buffers_;
     std::vector<std::function<void()>> in_flight_tasks_;
+    std::vector<CommandQueuePairToken> in_flight_pairs_;
 
   public:
-    CommandBufferTracker(
-        vk::raii::Device const &device, vk::raii::CommandPool const &pool,
-        uint32_t num_command_buffers)
-        : device_(device) {
-        vk::raii::CommandBuffers initial_command_buffers(
-            device,
-            {
-                .commandPool = *pool,
-                .level = vk::CommandBufferLevel::ePrimary,
-                .commandBufferCount = num_command_buffers,
-            });
+    CommandBufferTracker(VulkanContainer const &container, uint32_t num_queues)
+        : device_(container.device_), queues_(container.queues_.size()) {
 
-        for (auto &command_buffer : initial_command_buffers) {
-            free_command_buffers_.push(std::move(command_buffer));
+        for(int i = 0; i < std::min({uint32_t(queues_.size()), num_queues}); ++i) {
+            queues_[i] = &container.queues_[i];
+            vk::raii::CommandBuffers queueCommandBuffers(
+                device_,
+                {
+                    .commandPool = *container.command_pools_[i],
+                    .commandBufferCount = 1,
+                });
+            command_buffers_.push_back(std::move(queueCommandBuffers[0]));
+            available_pairs_.push({i});
         }
+
     }
 
-    bool has_command_buffer() { return !free_command_buffers_.empty(); }
+    bool has_command_buffer() { return !available_pairs_.empty(); }
 
-    vk::raii::CommandBuffer get_command_buffer() {
-        auto result = std::move(free_command_buffers_.front());
-        free_command_buffers_.pop();
-        return std::move(result);
+    std::pair<vk::raii::CommandBuffer&, CommandQueuePairToken> get_command_buffer() {
+        auto token = available_pairs_.front();
+        available_pairs_.pop();
+
+        return {command_buffers_[token.pair_index_], token};
     }
 
-    void queue_buffer_submission(
-        vk::raii::Queue const &queue, vk::raii::CommandBuffer &&buffer,
-        std::function<void()> when_done) {
+    void queue_buffer_submission(CommandQueuePairToken token, std::function<void()> when_done) {
         auto fence = device_.createFence({});
-        queue.submit(
-            {vk::SubmitInfo{.commandBufferCount = 1, .pCommandBuffers = &(*buffer)}}, *fence);
+        auto queue = queues_[token.pair_index_];
+        queue->submit(
+            {vk::SubmitInfo{.commandBufferCount = 1, .pCommandBuffers = &(*command_buffers_[token.pair_index_])}}, *fence);
 
         in_flight_fences_.push_back(std::move(fence));
-        in_flight_command_buffers_.push_back(std::move(buffer));
+        in_flight_pairs_.push_back(std::move(token));
         in_flight_tasks_.push_back(std::move(when_done));
     }
 
@@ -703,12 +728,11 @@ class CommandBufferTracker {
             in_flight_tasks_[i]();
 
             // Reset all state
-            free_command_buffers_.push(std::move(in_flight_command_buffers_[i]));
-
             auto fence = std::move(in_flight_fences_[i]);
+            available_pairs_.push(std::move(in_flight_pairs_[i]));
 
             in_flight_fences_.erase(in_flight_fences_.begin() + i);
-            in_flight_command_buffers_.erase(in_flight_command_buffers_.begin() + i);
+            in_flight_pairs_.erase(in_flight_pairs_.begin() + i);
             in_flight_tasks_.erase(in_flight_tasks_.begin() + i);
 
             any_fences_complete = true;
@@ -753,7 +777,7 @@ void PointRenderer::render_points_volume(
     }
 
     auto num_parallel_transfers =
-        std::min({uint32_t(std::thread::hardware_concurrency()), uint32_t(grid_size_)});
+        std::min({uint32_t(std::thread::hardware_concurrency()), uint32_t(grid_size_), uint32_t(container_.queues_.size())});
     if (num_parallel_transfers == 0) {
         num_parallel_transfers = 1;
     }
@@ -772,8 +796,7 @@ void PointRenderer::render_points_volume(
     std::mutex transfer_images_map_mutex;
 
     // Set-up resources for multiple submissions in flight.
-    CommandBufferTracker command_buffers(
-        container_.device_, container_.command_pools_[0], num_parallel_transfers);
+    CommandBufferTracker command_buffers(container_, num_parallel_transfers);
 
     // set-up vertex buffer
     auto const [vertexBuffer, vertexBufferMemory] = stage_to_vertex_buffer(container_, points);
@@ -790,7 +813,7 @@ void PointRenderer::render_points_volume(
             command_buffers.wait_for_fences(false, should_stop);
         }
 
-        auto command_buffer = command_buffers.get_command_buffer();
+        auto [command_buffer, token] = command_buffers.get_command_buffer();
 
         if (should_stop()) {
             break;
@@ -837,7 +860,7 @@ void PointRenderer::render_points_volume(
         }
 
         command_buffers.queue_buffer_submission(
-            container_.queues_[0], std::move(command_buffer), [&, i]() {
+            token, [&, i]() {
                 pool.push_task([&, i]() {
                     std::optional<TargetTransferPair> transfer_image;
 
