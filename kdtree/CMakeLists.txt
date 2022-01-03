@@ -16,6 +16,8 @@ project(kdtree VERSION 0.1 LANGUAGES CXX)
 
 
 add_library(kdtree STATIC src/cpp/kdtree.cpp)
+target_compile_options(kdtree PUBLIC $<$<CONFIG:DEBUG>:-fsanitize=address>)
+target_link_options(kdtree PUBLIC $<$<CONFIG:DEBUG>:-fsanitize=address>)
 
 add_executable(kdtree_main src/cpp/main.cpp)
 target_link_libraries(kdtree_main PRIVATE kdtree)

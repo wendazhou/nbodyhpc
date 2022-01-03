@@ -1,9 +1,13 @@
+#include <limits>
 #include <numeric>
 #include <random>
+#include <queue>
+#include <vector>
 
 #include <gtest/gtest.h>
 
 #include "kdtree.hpp"
+#include "utils.hpp"
 
 namespace {
 
@@ -41,6 +45,23 @@ float find_nearest_naive(tcb::span<const std::array<float, 3>> positions, std::a
         [&](std::array<float, 3> const &x) { return l2_distance_squared(x, query); });
 }
 
+std::vector<float> find_nearest_naive(tcb::span<const std::array<float, 3>> positions, const std::array<float, 3>& query, int k) {
+    std::priority_queue<float> distances(std::less<float>{}, std::vector<float>(k, std::numeric_limits<float>::max()));
+
+    for (auto const& pos : positions) {
+        auto distance = l2_distance_squared(pos, query);
+
+        if (distance < distances.top()) {
+            distances.pop();
+            distances.push(distance);
+        }
+    }
+
+    std::vector<float> result(std::move(wenda::kdtree::get_container_from_adapter(distances)));
+    std::sort(result.begin(), result.end());
+    return result;
+}
+
 } // namespace
 
 
@@ -54,11 +75,28 @@ TEST_P(KDTreeRandomTest, BuildAndFindNearest) {
     std::array<float, 3> query = {0.5,0.5,0.5};
 
     auto tree = wenda::kdtree::build_kdtree(positions);
-    auto result = wenda::kdtree::query_kdtree(tree.get(), query);
+    auto result = wenda::kdtree::query_kdtree_knn(tree.get(), query);
 
     auto naive_result = find_nearest_naive(positions, query);
 
-    ASSERT_FLOAT_EQ(result, naive_result);
+    ASSERT_FLOAT_EQ(result[0], naive_result);
+}
+
+TEST_P(KDTreeRandomTest, BuildAndFindNearestMultiple) {
+    auto positions = fill_random_positions(GetParam(), 42);
+    std::array<float, 3> query = {0.5,0.5,0.5};
+
+    auto tree = wenda::kdtree::build_kdtree(positions);
+
+    auto result = wenda::kdtree::query_kdtree_knn(tree.get(), query, 4);
+    auto naive_result = find_nearest_naive(positions, query, 4);
+
+    ASSERT_TRUE(std::is_sorted(result.begin(), result.end()));
+
+    ASSERT_FLOAT_EQ(result[0], naive_result[0]);
+    ASSERT_FLOAT_EQ(result[1], naive_result[1]);
+    ASSERT_FLOAT_EQ(result[2], naive_result[2]);
+    ASSERT_FLOAT_EQ(result[3], naive_result[3]);
 }
 
 INSTANTIATE_TEST_SUITE_P(BuildAndFindNearestSmall, KDTreeRandomTest, testing::Values(100, 1000, 10000));

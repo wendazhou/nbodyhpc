@@ -2,16 +2,18 @@
 
 #include <algorithm>
 #include <array>
+#include <limits>
 #include <memory>
 #include <numeric>
+#include <queue>
 #include <vector>
 
 #include "span.hpp"
+#include "utils.hpp"
 
 namespace wenda {
 
 namespace kdtree {
-
 
 std::unique_ptr<KDTreeNode> build_kdtree_implementation(
     tcb::span<int> indices, tcb::span<const std::array<float, 3>> positions, int dimension) {
@@ -38,9 +40,9 @@ std::unique_ptr<KDTreeNode> build_kdtree_implementation(
 
     // recurse
     auto left_tree = build_kdtree_implementation(
-        tcb::span<int>(indices.begin(), median_it - 1), positions, (dimension + 1) % 3);
+        tcb::span<int>(indices.begin(), median_it), positions, (dimension + 1) % 3);
     auto right_tree = build_kdtree_implementation(
-        tcb::span<int>(median_it + 1, indices.end()), positions, (dimension + 1) % 3);
+        tcb::span<int>(median_it, indices.end()), positions, (dimension + 1) % 3);
 
     return std::make_unique<KDTreeNode>(
         dimension, split, std::move(left_tree), std::move(right_tree));
@@ -64,41 +66,76 @@ T l2_distance(std::array<T, R> const &left, std::array<T, R> const &right) {
     return result;
 }
 
-float query_kdtree(KDTreeNode *tree, std::array<float, 3> const& query, float distance_bound) {
-    if (tree->leaf_) {
-        // return distance to closest point in tree leaf
+namespace {
 
-        return std::transform_reduce(
-            tree->positions_.begin(),
-            tree->positions_.end(),
-            std::numeric_limits<float>::max(),
-            [](float a, float b) { return std::min(a, b); },
-            [&](std::array<float, 3> const &x) { return l2_distance(x, query); });
+
+struct KDTreeQuery {
+    std::array<float, 3> const &query_;
+    std::priority_queue<float> distances_;
+    size_t num_nodes_visited = 0;
+    size_t num_nodes_pruned = 0;
+
+    KDTreeQuery(std::array<float, 3> const &query, int k)
+        : query_(query),
+          distances_(std::less<float>{}, std::vector<float>(k, std::numeric_limits<float>::max())) {
     }
 
-    KDTreeNode* closer, * further;
+    bool push_point(std::array<float, 3> const &p) {
+        auto dist = l2_distance(p, query_);
 
-    if (query[tree->dimension_] < tree->split_) {
-        closer = tree->children_.left_;
-        further = tree->children_.right_;
-    } else {
-        closer = tree->children_.right_;
-        further = tree->children_.left_;
+        if (dist < distances_.top()) {
+            distances_.pop();
+            distances_.push(dist);
+            return true;
+        }
+
+        return false;
     }
 
-    float distance_closer = query_kdtree(closer, query, distance_bound);
+    void compute(KDTreeNode *tree) {
+        num_nodes_visited += 1;
 
-    distance_bound = std::min(distance_bound, distance_closer);
-    auto delta_dimension = query[tree->dimension_] - tree->split_;
+        if (tree->leaf_) {
+            for (auto const &p : tree->positions_) {
+                push_point(p);
+            }
 
-    // prune evaluation of further node if it is guaranteed to be further.
-    if (distance_bound < delta_dimension * delta_dimension) {
-        return distance_bound;
+            return;
+        }
+
+        KDTreeNode *closer, *further;
+
+        if (query_[tree->dimension_] < tree->split_) {
+            closer = tree->children_.left_;
+            further = tree->children_.right_;
+        } else {
+            closer = tree->children_.right_;
+            further = tree->children_.left_;
+        }
+
+        compute(closer);
+
+        auto delta_dimension = query_[tree->dimension_] - tree->split_;
+
+        if (distances_.top() < delta_dimension * delta_dimension) {
+            num_nodes_pruned += 1;
+            return;
+        }
+
+        compute(further);
     }
+};
 
-    float distance_further = query_kdtree(further, query, distance_bound);
+} // namespace
 
-    return std::min(distance_bound, distance_further);
+std::vector<float>
+query_kdtree_knn(KDTreeNode *tree, std::array<float, 3> const &query, int k) {
+    KDTreeQuery q(query, k);
+    q.compute(tree);
+
+    auto result = std::move(get_container_from_adapter(q.distances_));
+    std::sort(result.begin(), result.end());
+    return result;
 }
 
 } // namespace kdtree
