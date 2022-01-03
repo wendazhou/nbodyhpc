@@ -48,7 +48,7 @@ std::unique_ptr<KDTreeNode> build_kdtree_implementation(
         dimension, split, std::move(left_tree), std::move(right_tree));
 }
 
-std::unique_ptr<KDTreeNode> build_kdtree(tcb::span<std::array<float, 3>> positions) {
+std::unique_ptr<KDTreeNode> build_kdtree(tcb::span<const std::array<float, 3>> positions) {
     std::vector<int> indices(positions.size());
     std::iota(indices.begin(), indices.end(), 0);
 
@@ -74,6 +74,7 @@ struct KDTreeQuery {
     std::priority_queue<float> distances_;
     size_t num_nodes_visited = 0;
     size_t num_nodes_pruned = 0;
+    size_t num_points_visited = 0;
 
     KDTreeQuery(std::array<float, 3> const &query, int k)
         : query_(query),
@@ -92,7 +93,7 @@ struct KDTreeQuery {
         return false;
     }
 
-    void compute(KDTreeNode *tree) {
+    void compute(KDTreeNode const *tree) {
         num_nodes_visited += 1;
 
         if (tree->leaf_) {
@@ -100,10 +101,12 @@ struct KDTreeQuery {
                 push_point(p);
             }
 
+            num_points_visited += tree->positions_.size();
+
             return;
         }
 
-        KDTreeNode *closer, *further;
+        KDTreeNode const *closer, *further;
 
         if (query_[tree->dimension_] < tree->split_) {
             closer = tree->children_.left_;
@@ -129,9 +132,15 @@ struct KDTreeQuery {
 } // namespace
 
 std::vector<float>
-query_kdtree_knn(KDTreeNode *tree, std::array<float, 3> const &query, int k) {
+query_kdtree_knn(KDTreeNode const *tree, std::array<float, 3> const &query, int k, KDTreeQueryStatistics* statistics) {
     KDTreeQuery q(query, k);
     q.compute(tree);
+
+    if (statistics) {
+        statistics->nodes_visited = q.num_nodes_visited;
+        statistics->nodes_pruned = q.num_nodes_pruned;
+        statistics->points_visited = q.num_points_visited;
+    }
 
     auto result = std::move(get_container_from_adapter(q.distances_));
     std::sort(result.begin(), result.end());

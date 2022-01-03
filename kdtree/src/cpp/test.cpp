@@ -75,11 +75,16 @@ TEST_P(KDTreeRandomTest, BuildAndFindNearest) {
     std::array<float, 3> query = {0.5,0.5,0.5};
 
     auto tree = wenda::kdtree::build_kdtree(positions);
-    auto result = wenda::kdtree::query_kdtree_knn(tree.get(), query);
+    wenda::kdtree::KDTreeQueryStatistics statistics;
+    auto result = wenda::kdtree::query_kdtree_knn(tree.get(), query, 1, &statistics);
 
     auto naive_result = find_nearest_naive(positions, query);
 
     ASSERT_FLOAT_EQ(result[0], naive_result);
+
+    ASSERT_GT(statistics.nodes_pruned, 0);
+    ASSERT_GT(statistics.nodes_visited, 0);
+    ASSERT_LT(statistics.nodes_visited, positions.size());
 }
 
 TEST_P(KDTreeRandomTest, BuildAndFindNearestMultiple) {
@@ -87,8 +92,9 @@ TEST_P(KDTreeRandomTest, BuildAndFindNearestMultiple) {
     std::array<float, 3> query = {0.5,0.5,0.5};
 
     auto tree = wenda::kdtree::build_kdtree(positions);
+    wenda::kdtree::KDTreeQueryStatistics statistics;
+    auto result = wenda::kdtree::query_kdtree_knn(tree.get(), query, 4, &statistics);
 
-    auto result = wenda::kdtree::query_kdtree_knn(tree.get(), query, 4);
     auto naive_result = find_nearest_naive(positions, query, 4);
 
     ASSERT_TRUE(std::is_sorted(result.begin(), result.end()));
@@ -97,6 +103,10 @@ TEST_P(KDTreeRandomTest, BuildAndFindNearestMultiple) {
     ASSERT_FLOAT_EQ(result[1], naive_result[1]);
     ASSERT_FLOAT_EQ(result[2], naive_result[2]);
     ASSERT_FLOAT_EQ(result[3], naive_result[3]);
+
+    ASSERT_GT(statistics.nodes_pruned, 0);
+    ASSERT_GT(statistics.nodes_visited, 0);
+    ASSERT_LT(statistics.nodes_visited, positions.size());
 }
 
 INSTANTIATE_TEST_SUITE_P(BuildAndFindNearestSmall, KDTreeRandomTest, testing::Values(100, 1000, 10000));

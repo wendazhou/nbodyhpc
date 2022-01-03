@@ -44,7 +44,13 @@ struct KDTreeNode {
     }
 };
 
-std::unique_ptr<KDTreeNode> build_kdtree(tcb::span<std::array<float, 3>> positions);
+struct KDTreeQueryStatistics {
+    size_t nodes_visited;
+    size_t nodes_pruned;
+    size_t points_visited;
+};
+
+std::unique_ptr<KDTreeNode> build_kdtree(tcb::span<const std::array<float, 3>> positions);
 
 /** Query the kdtree for the nearest neighbors of a given point.
  * 
@@ -52,10 +58,11 @@ std::unique_ptr<KDTreeNode> build_kdtree(tcb::span<std::array<float, 3>> positio
  * @param point The point to query for.
  * @param k The number of nearest neighbors to return.
  * @param max_distance The maximum distance of the neighbors to consider.
+ * @param[out,optional] If not null, the statistics of the query will be stored here.
  * 
  */
 std::vector<float> query_kdtree_knn(
-    KDTreeNode *tree, std::array<float, 3> const &query, int k = 1);
+    KDTreeNode const *tree, std::array<float, 3> const &query, int k = 1, KDTreeQueryStatistics *statistics = nullptr);
 
 } // namespace kdtree
 } // namespace wenda
