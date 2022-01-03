@@ -20,12 +20,12 @@ class KDTree {
      *
      */
     struct KDTreeNode {
-        //! The dimension at which the split occurs
+        //! The dimension at which the split occurs.
+        //! This field additionally indicates that the node is a leaf node
+        //! when the dimension is specified to be -1.
         int dimension_;
-        //! The value at which the split is performed
+        //! The value at which the split is performed, if not a leaf node.
         float split_;
-        //! Indicates whether this is a leaf node
-        bool leaf_;
 
         //! For leaf nodes, the start index of the positions in this node.
         //! For non-leaf nodes, the index of the left child node.

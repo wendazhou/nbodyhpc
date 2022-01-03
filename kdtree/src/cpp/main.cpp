@@ -94,7 +94,7 @@ BenchmarkResult benchmark_kdtree_file(std::string const &filepath, size_t num_qu
 } // namespace
 
 int main(int argc, char *argv[]) {
-    auto num_queries = 1000000;
+    auto num_queries = 500000;
     BenchmarkResult result;
 
     if (argc == 1) {

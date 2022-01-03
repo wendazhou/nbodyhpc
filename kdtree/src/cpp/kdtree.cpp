@@ -32,8 +32,7 @@ uint32_t build_kdtree_offsets(
     std::vector<KDTree::KDTreeNode> &nodes, tcb::span<std::array<float, 3>> positions,
     int dimension, uint32_t left) {
     if (positions.size() < 8) {
-        nodes.emplace_back(
-            dimension, 0.0f, true, left, static_cast<uint32_t>(left + positions.size()));
+        nodes.push_back({-1, 0.0f, left, static_cast<uint32_t>(left + positions.size())});
         return static_cast<uint32_t>(nodes.size() - 1);
     }
 
@@ -49,7 +48,7 @@ uint32_t build_kdtree_offsets(
     float split = (*median_it)[dimension];
 
     uint32_t current_idx = static_cast<uint32_t>(nodes.size());
-    nodes.emplace_back(dimension, split, false, 0, 0);
+    nodes.push_back({dimension, split, 0u, 0u});
 
     uint32_t left_idx = build_kdtree_offsets(
         nodes,
@@ -94,14 +93,12 @@ struct KDTreeQuery {
         return false;
     }
 
-    void compute(uint32_t node_idx) {
-        auto const &node = nodes_[node_idx];
-
+    void compute(KDTree::KDTreeNode const* node) {
         num_nodes_visited += 1;
 
-        if (node.leaf_) {
+        if (node->dimension_ == -1) {
             tcb::span<const std::array<float, 3>> node_positions(
-                positions_.data() + node.left_, positions_.data() + node.right_);
+                positions_.data() + node->left_, positions_.data() + node->right_);
 
             for (auto const &p : node_positions) {
                 push_point(p);
@@ -112,19 +109,16 @@ struct KDTreeQuery {
             return;
         }
 
-        uint32_t closer, further;
+        auto closer = nodes_.data() + node->left_;
+        auto further = nodes_.data() + node->right_;
 
-        if (query_[node.dimension_] < node.split_) {
-            closer = node.left_;
-            further = node.right_;
-        } else {
-            closer = node.right_;
-            further = node.left_;
+        if (query_[node->dimension_] > node->split_) {
+            std::swap(closer, further);
         }
 
         compute(closer);
 
-        auto delta_dimension = query_[node.dimension_] - node.split_;
+        auto delta_dimension = query_[node->dimension_] - node->split_;
 
         if (distances_.top() < delta_dimension * delta_dimension) {
             num_nodes_pruned += 1;
@@ -146,7 +140,7 @@ std::vector<float> KDTree::find_closest(
     std::array<float, 3> const &position, size_t k, KDTreeQueryStatistics *statistics) const {
 
     KDTreeQuery query(*this, position, k);
-    query.compute(0);
+    query.compute(&nodes_[0]);
 
     if (statistics) {
         statistics->nodes_visited = query.num_nodes_visited;
