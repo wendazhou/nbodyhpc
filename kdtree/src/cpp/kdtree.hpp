@@ -40,7 +40,12 @@ class KDTree {
     std::vector<std::array<float, 3>> positions_;
 
   public:
-    KDTree(tcb::span<const std::array<float, 3>> positions);
+    /** Builds a new KD-tree from the given positions.
+     * 
+     * @param positions The positions to build the tree from.
+     * @param multithreaded If True, indicates that multithreading should be used for construction.
+     */
+    KDTree(tcb::span<const std::array<float, 3>> positions, bool multithreaded=false);
     KDTree(KDTree const &) = default;
     KDTree(KDTree &&) noexcept = default;
 

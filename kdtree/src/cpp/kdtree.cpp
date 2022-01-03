@@ -195,7 +195,7 @@ struct KDTreeQuery {
 
 } // namespace
 
-KDTree::KDTree(tcb::span<const std::array<float, 3>> positions)
+KDTree::KDTree(tcb::span<const std::array<float, 3>> positions, bool multithreaded)
     : positions_(positions.begin(), positions.end()) {
 
     if (positions.size() > static_cast<size_t>(std::numeric_limits<uint32_t>::max())) {
@@ -204,7 +204,7 @@ KDTree::KDTree(tcb::span<const std::array<float, 3>> positions)
 
     const size_t num_points_per_thread = 5000000;
 
-    if (positions.size() >= 2 * num_points_per_thread) {
+    if (multithreaded && positions.size() >= 2 * num_points_per_thread) {
         double num_threads = static_cast<double>(positions.size()) / num_points_per_thread;
         int log2_threads = static_cast<int>(std::log2(num_threads));
 

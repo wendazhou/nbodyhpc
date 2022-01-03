@@ -21,6 +21,7 @@ add_library(kdtree STATIC src/cpp/kdtree.cpp)
 target_link_libraries(kdtree PRIVATE Threads::Threads)
 target_compile_options(kdtree PUBLIC $<$<CONFIG:DEBUG>:-fsanitize=address>)
 target_link_options(kdtree PUBLIC $<$<CONFIG:DEBUG>:-fsanitize=address>)
+target_include_directories(kdtree PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/misc)
 
 add_executable(kdtree_main src/cpp/main.cpp)
 target_link_libraries(kdtree_main PRIVATE kdtree)
