@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <cmath>
 #include <future>
 #include <limits>
 #include <memory>
@@ -32,30 +33,31 @@ T l2_distance(std::array<T, R> const &left, std::array<T, R> const &right) {
 
 namespace {
 
-struct spinlock {
-    std::atomic_flag &flag_;
-
-    explicit spinlock(std::atomic_flag &flag) : flag_(flag) {
-        while (flag_.test_and_set(std::memory_order_acquire)) {
-#if defined(_cpp_lib_atomic_test_flag)
-            while (flag_.test(std::memory_order_relaxed))
-#endif
-                std::this_thread::yield();
-        }
-    }
-
-    ~spinlock() {
-        flag_.clear(std::memory_order_release);
-    }
+struct MutexLockSynchronization {
+    typedef std::mutex mutex_t;
+    typedef std::scoped_lock<std::mutex> lock_t;
 };
 
+struct NullLock {
+    template<typename... T>
+    NullLock(T...) {}
+};
+
+struct NullSynchonization {
+    typedef std::nullptr_t mutex_t;
+    typedef NullLock lock_t;
+};
+
+template<typename Synchronization = MutexLockSynchronization>
 uint32_t build_kdtree_offsets(
     std::vector<KDTree::KDTreeNode> &nodes, tcb::span<std::array<float, 3>> positions,
-    int dimension, uint32_t left, int threads_levels, std::mutex &mutex) {
+    int dimension, uint32_t left, int threads_levels, typename Synchronization::mutex_t& mutex) {
+
+    typedef typename Synchronization::lock_t lock_t;
 
     if (positions.size() < 8) {
         {
-            std::scoped_lock lock(mutex);
+            lock_t lock(mutex);
             nodes.push_back({-1, 0.0f, left, static_cast<uint32_t>(left + positions.size())});
             return static_cast<uint32_t>(nodes.size() - 1);
         }
@@ -75,7 +77,7 @@ uint32_t build_kdtree_offsets(
     uint32_t current_idx;
 
     {
-        std::scoped_lock lock(mutex);
+        lock_t lock(mutex);
         current_idx = static_cast<uint32_t>(nodes.size());
         nodes.push_back({dimension, split, 0u, 0u});
     }
@@ -84,7 +86,7 @@ uint32_t build_kdtree_offsets(
 
     if (threads_levels > 0) {
         std::future<uint32_t> left_future = std::async(std::launch::async, [&]() {
-            return build_kdtree_offsets(
+            return build_kdtree_offsets<Synchronization>(
                 nodes,
                 tcb::span<std::array<float, 3>>(positions.begin(), median_it),
                 (dimension + 1) % 3,
@@ -93,7 +95,7 @@ uint32_t build_kdtree_offsets(
                 mutex);
         });
 
-        right_idx = build_kdtree_offsets(
+        right_idx = build_kdtree_offsets<Synchronization>(
             nodes,
             tcb::span<std::array<float, 3>>(median_it, positions.end()),
             (dimension + 1) % 3,
@@ -103,7 +105,7 @@ uint32_t build_kdtree_offsets(
 
         left_idx = left_future.get();
     } else {
-        left_idx = build_kdtree_offsets(
+        left_idx = build_kdtree_offsets<Synchronization>(
             nodes,
             tcb::span<std::array<float, 3>>(positions.begin(), median_it),
             (dimension + 1) % 3,
@@ -111,7 +113,7 @@ uint32_t build_kdtree_offsets(
             threads_levels,
             mutex);
 
-        right_idx = build_kdtree_offsets(
+        right_idx = build_kdtree_offsets<Synchronization>(
             nodes,
             tcb::span<std::array<float, 3>>(median_it, positions.end()),
             (dimension + 1) % 3,
@@ -121,7 +123,7 @@ uint32_t build_kdtree_offsets(
     }
 
     {
-        std::scoped_lock lock(mutex);
+        lock_t lock(mutex);
         nodes[current_idx].left_ = left_idx;
         nodes[current_idx].right_ = right_idx;
     }
@@ -200,8 +202,20 @@ KDTree::KDTree(tcb::span<const std::array<float, 3>> positions)
         throw std::runtime_error("More than uint32_t points are not supported.");
     }
 
-    std::mutex mutex;
-    build_kdtree_offsets(nodes_, positions_, 0, 0, 2, mutex);
+    const size_t num_points_per_thread = 5000000;
+
+    if (positions.size() >= 2 * num_points_per_thread) {
+        double num_threads = static_cast<double>(positions.size()) / num_points_per_thread;
+        int log2_threads = static_cast<int>(std::log2(num_threads));
+
+        typedef MutexLockSynchronization Synchronization;
+        Synchronization::mutex_t mutex;
+        build_kdtree_offsets<Synchronization>(nodes_, positions_, 0, 0, log2_threads, mutex);
+    }
+    else {
+        std::nullptr_t mutex;
+        build_kdtree_offsets<NullSynchonization>(nodes_, positions_, 0, 0, 0, mutex);
+    }
 }
 
 std::vector<float> KDTree::find_closest(
