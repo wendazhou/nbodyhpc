@@ -2,10 +2,14 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
+#include <future>
 #include <limits>
 #include <memory>
+#include <mutex>
 #include <numeric>
 #include <queue>
+#include <shared_mutex>
 #include <vector>
 
 #include "span.hpp"
@@ -28,12 +32,33 @@ T l2_distance(std::array<T, R> const &left, std::array<T, R> const &right) {
 
 namespace {
 
+struct spinlock {
+    std::atomic_flag &flag_;
+
+    explicit spinlock(std::atomic_flag &flag) : flag_(flag) {
+        while (flag_.test_and_set(std::memory_order_acquire)) {
+#if defined(_cpp_lib_atomic_test_flag)
+            while (flag_.test(std::memory_order_relaxed))
+#endif
+                std::this_thread::yield();
+        }
+    }
+
+    ~spinlock() {
+        flag_.clear(std::memory_order_release);
+    }
+};
+
 uint32_t build_kdtree_offsets(
     std::vector<KDTree::KDTreeNode> &nodes, tcb::span<std::array<float, 3>> positions,
-    int dimension, uint32_t left) {
+    int dimension, uint32_t left, int threads_levels, std::mutex &mutex) {
+
     if (positions.size() < 8) {
-        nodes.push_back({-1, 0.0f, left, static_cast<uint32_t>(left + positions.size())});
-        return static_cast<uint32_t>(nodes.size() - 1);
+        {
+            std::scoped_lock lock(mutex);
+            nodes.push_back({-1, 0.0f, left, static_cast<uint32_t>(left + positions.size())});
+            return static_cast<uint32_t>(nodes.size() - 1);
+        }
     }
 
     auto median_it = positions.begin() + positions.size() / 2;
@@ -47,22 +72,59 @@ uint32_t build_kdtree_offsets(
 
     float split = (*median_it)[dimension];
 
-    uint32_t current_idx = static_cast<uint32_t>(nodes.size());
-    nodes.push_back({dimension, split, 0u, 0u});
+    uint32_t current_idx;
 
-    uint32_t left_idx = build_kdtree_offsets(
-        nodes,
-        tcb::span<std::array<float, 3>>(positions.begin(), median_it),
-        (dimension + 1) % 3,
-        left);
-    uint32_t right_idx = build_kdtree_offsets(
-        nodes,
-        tcb::span<std::array<float, 3>>(median_it, positions.end()),
-        (dimension + 1) % 3,
-        left + static_cast<uint32_t>(std::distance(positions.begin(), median_it)));
+    {
+        std::scoped_lock lock(mutex);
+        current_idx = static_cast<uint32_t>(nodes.size());
+        nodes.push_back({dimension, split, 0u, 0u});
+    }
 
-    nodes[current_idx].left_ = left_idx;
-    nodes[current_idx].right_ = right_idx;
+    uint32_t left_idx, right_idx;
+
+    if (threads_levels > 0) {
+        std::future<uint32_t> left_future = std::async(std::launch::async, [&]() {
+            return build_kdtree_offsets(
+                nodes,
+                tcb::span<std::array<float, 3>>(positions.begin(), median_it),
+                (dimension + 1) % 3,
+                left,
+                threads_levels - 1,
+                mutex);
+        });
+
+        right_idx = build_kdtree_offsets(
+            nodes,
+            tcb::span<std::array<float, 3>>(median_it, positions.end()),
+            (dimension + 1) % 3,
+            left + static_cast<uint32_t>(std::distance(positions.begin(), median_it)),
+            threads_levels - 1,
+            mutex);
+
+        left_idx = left_future.get();
+    } else {
+        left_idx = build_kdtree_offsets(
+            nodes,
+            tcb::span<std::array<float, 3>>(positions.begin(), median_it),
+            (dimension + 1) % 3,
+            left,
+            threads_levels,
+            mutex);
+
+        right_idx = build_kdtree_offsets(
+            nodes,
+            tcb::span<std::array<float, 3>>(median_it, positions.end()),
+            (dimension + 1) % 3,
+            left + static_cast<uint32_t>(std::distance(positions.begin(), median_it)),
+            threads_levels,
+            mutex);
+    }
+
+    {
+        std::scoped_lock lock(mutex);
+        nodes[current_idx].left_ = left_idx;
+        nodes[current_idx].right_ = right_idx;
+    }
 
     return current_idx;
 }
@@ -93,7 +155,7 @@ struct KDTreeQuery {
         return false;
     }
 
-    void compute(KDTree::KDTreeNode const* node) {
+    void compute(KDTree::KDTreeNode const *node) {
         num_nodes_visited += 1;
 
         if (node->dimension_ == -1) {
@@ -133,7 +195,13 @@ struct KDTreeQuery {
 
 KDTree::KDTree(tcb::span<const std::array<float, 3>> positions)
     : positions_(positions.begin(), positions.end()) {
-    build_kdtree_offsets(nodes_, positions_, 0, 0);
+
+    if (positions.size() > static_cast<size_t>(std::numeric_limits<uint32_t>::max())) {
+        throw std::runtime_error("More than uint32_t points are not supported.");
+    }
+
+    std::mutex mutex;
+    build_kdtree_offsets(nodes_, positions_, 0, 0, 2, mutex);
 }
 
 std::vector<float> KDTree::find_closest(

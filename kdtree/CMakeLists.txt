@@ -14,8 +14,11 @@ FetchContent_MakeAvailable(googletest)
 
 project(kdtree VERSION 0.1 LANGUAGES CXX)
 
+find_package(Threads REQUIRED)
+
 
 add_library(kdtree STATIC src/cpp/kdtree.cpp)
+target_link_libraries(kdtree PRIVATE Threads::Threads)
 target_compile_options(kdtree PUBLIC $<$<CONFIG:DEBUG>:-fsanitize=address>)
 target_link_options(kdtree PUBLIC $<$<CONFIG:DEBUG>:-fsanitize=address>)
 

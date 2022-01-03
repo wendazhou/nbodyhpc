@@ -41,6 +41,8 @@ class KDTree {
 
   public:
     KDTree(tcb::span<const std::array<float, 3>> positions);
+    KDTree(KDTree const &) = default;
+    KDTree(KDTree &&) noexcept = default;
 
     tcb::span<const KDTreeNode> nodes() const noexcept { return nodes_; }
     tcb::span<const std::array<float, 3>> positions() const noexcept { return positions_; }
