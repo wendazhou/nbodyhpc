@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <cassert>
 #include <cmath>
 #include <future>
 #include <limits>
@@ -13,8 +14,10 @@
 #include <shared_mutex>
 #include <vector>
 
-#include "span.hpp"
 #include "utils.hpp"
+#include <span.hpp>
+
+#include <iostream>
 
 namespace wenda {
 
@@ -136,6 +139,20 @@ template <typename Synchronization = MutexLockSynchronization> struct KDTreeBuil
     }
 };
 
+template <typename T, size_t R>
+T distance_to_box(std::array<T, R> const &point, std::array<T, 2 * R> const &box) {
+    T result = 0;
+
+    for (size_t i = 0; i < R; ++i) {
+        auto delta_left = std::max(box[2 * i] - point[i], T{0});
+        auto delta_right = std::max(point[i] - box[2 * i + 1], T{0});
+        result += delta_left * delta_left + delta_right * delta_right;
+    }
+
+    return result;
+}
+
+//! Utility structure used to store state of KD-tree search.
 struct KDTreeQuery {
     tcb::span<const std::array<float, 3>> positions_;
     tcb::span<const KDTree::KDTreeNode> nodes_;
@@ -162,7 +179,7 @@ struct KDTreeQuery {
         return false;
     }
 
-    void compute(KDTree::KDTreeNode const *node) {
+    void compute(KDTree::KDTreeNode const *node, std::array<float, 6> const &bounds) {
         num_nodes_visited += 1;
 
         if (node->dimension_ == -1) {
@@ -180,21 +197,32 @@ struct KDTreeQuery {
 
         auto closer = nodes_.data() + node->left_;
         auto further = nodes_.data() + node->right_;
+        size_t close_boundary_dim = 2 * node->dimension_ + 1;
+        size_t far_boundary_dim = 2 * node->dimension_;
 
         if (query_[node->dimension_] > node->split_) {
             std::swap(closer, further);
+            std::swap(close_boundary_dim, far_boundary_dim);
         }
 
-        compute(closer);
+        {
+            std::array<float, 6> close_bounds = bounds;
+            close_bounds[close_boundary_dim] = node->split_;
+            compute(closer, close_bounds);
+        }
 
+        std::array<float, 6> far_bounds = bounds;
+        far_bounds[far_boundary_dim] = node->split_;
+
+        auto distance = distance_to_box(query_, far_bounds);
         auto delta_dimension = query_[node->dimension_] - node->split_;
 
-        if (distances_.top() < delta_dimension * delta_dimension) {
+        if (distances_.top() < distance) {
             num_nodes_pruned += 1;
             return;
         }
 
-        compute(further);
+        compute(further, far_bounds);
     }
 };
 
@@ -230,7 +258,14 @@ std::vector<float> KDTree::find_closest(
     std::array<float, 3> const &position, size_t k, KDTreeQueryStatistics *statistics) const {
 
     KDTreeQuery query(*this, position, k);
-    query.compute(&nodes_[0]);
+    query.compute(
+        &nodes_[0],
+        {-std::numeric_limits<float>::max(),
+         std::numeric_limits<float>::max(),
+         -std::numeric_limits<float>::max(),
+         std::numeric_limits<float>::max(),
+         -std::numeric_limits<float>::max(),
+         std::numeric_limits<float>::max()});
 
     if (statistics) {
         statistics->nodes_visited = query.num_nodes_visited;

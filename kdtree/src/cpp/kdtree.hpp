@@ -3,7 +3,7 @@
 #include <array>
 #include <vector>
 
-#include "span.hpp"
+#include <span.hpp>
 
 namespace wenda {
 namespace kdtree {
@@ -46,7 +46,7 @@ class KDTree {
 
   public:
     /** Builds a new KD-tree from the given positions.
-     * 
+     *
      * @param positions The positions to build the tree from.
      * @param multithreaded If True, indicates that multithreading should be used for construction.
      */
@@ -61,7 +61,6 @@ class KDTree {
         std::array<float, 3> const &position, size_t k,
         KDTreeQueryStatistics *statistics = nullptr) const;
 };
-
 
 } // namespace kdtree
 } // namespace wenda
