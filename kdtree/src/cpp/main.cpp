@@ -33,7 +33,7 @@ benchmark_lookup_same(tcb::span<const std::array<float, 3>> positions, int num_n
     std::chrono::high_resolution_clock clock;
 
     auto tree_build_start_t = clock.now();
-    auto tree = wenda::kdtree::build_kdtree(positions);
+    auto tree = wenda::kdtree::KDTree(positions);
     auto tree_build_end_t = clock.now();
 
     float total_distance = 0;
@@ -45,7 +45,7 @@ benchmark_lookup_same(tcb::span<const std::array<float, 3>> positions, int num_n
 
     for (size_t i = 0; i < num_queries; ++i) {
         auto const& pos = positions[i];
-        auto nearest = wenda::kdtree::query_kdtree_knn(tree.get(), pos, 16, &statistics);
+        auto nearest = tree.find_closest(pos, 16, &statistics);
         total_distance += nearest[0];
         total_points_visited += statistics.points_visited;
     }
