@@ -80,16 +80,17 @@ template <typename T> struct L2PeriodicDistance {
         T result = 0;
 
         for (size_t i = 0; i < R; ++i) {
-            auto delta_left_nowrap = std::max(box[2 * i] - point[i], T{0});
-            auto delta_left_wrap = std::max(point[i] - box[2 * i + 1] - box_size_, T{0});
-
-            auto delta_right_nowrap = std::max(point[i] - box[2 * i + 1], T{0});
-            auto delta_right_wrap = std::max(box[2 * i] - point[i] + box_size_, T{0});
-
-            auto delta_left = std::min(delta_left_nowrap, delta_left_wrap);
-            auto delta_right = std::min(delta_right_nowrap, delta_right_wrap);
-
-            result += delta_left * delta_left + delta_right * delta_right;
+            if (point[i] < box[2 * i]) {
+                auto delta = box[2 * i] - point[i];
+                auto delta_wrap = point[i] + box_size_ - box[2 * i + 1];
+                auto delta_min = std::min(delta, delta_wrap);
+                result += delta_min * delta_min;
+            } else if (point[i] > box[2 * i + 1]) {
+                auto delta = point[i] - box[2 * i + 1];
+                auto delta_wrap = box[2 * i] + box_size_ - point[i];
+                auto delta_min = std::min(delta, delta_wrap);
+                result += delta_min * delta_min;
+            }
         }
 
         return result;

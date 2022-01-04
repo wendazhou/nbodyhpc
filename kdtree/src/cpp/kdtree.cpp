@@ -155,8 +155,8 @@ template <typename Distance = L2Distance> struct KDTreeQuery {
               PairLessFirst{}, std::vector<result_t>(k, {std::numeric_limits<float>::max(), -1})) {}
 
     void process_leaf(KDTree::KDTreeNode const &node) {
-        auto node_positions = positions_.subspan(node.left_, node.right_ - node.left_);
-        uint32_t const num_points = node_positions.size();
+        uint32_t const num_points = node.right_ - node.left_;
+        auto node_positions = positions_.subspan(node.left_, num_points);
 
         float current_distance = distances_.top().first;
 
