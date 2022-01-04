@@ -188,5 +188,9 @@ extern template std::vector<std::pair<float, uint32_t>> KDTree::find_closest<L2D
     std::array<float, 3> const &position, size_t k, L2Distance const &,
     KDTreeQueryStatistics *statistics) const;
 
+extern template std::vector<std::pair<float, uint32_t>> KDTree::find_closest<L2PeriodicDistance<float>>(
+    std::array<float, 3> const &position, size_t k, L2PeriodicDistance<float> const &,
+    KDTreeQueryStatistics *statistics) const;
+
 } // namespace kdtree
 } // namespace wenda

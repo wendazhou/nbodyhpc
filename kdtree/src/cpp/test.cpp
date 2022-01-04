@@ -120,6 +120,35 @@ TEST_P(KDTreeRandomTest, BuildAndFindNearestClassMT) {
     ASSERT_LT(statistics.nodes_visited, positions.size());
 }
 
+TEST_P(KDTreeRandomTest, BuildAndFindNearestPeriodic) {
+    auto positions = fill_random_positions<float, 3>(GetParam(), 42);
+    std::array<float, 3> query = {0.5, 0.5, 0.5};
+
+    auto distance = wenda::kdtree::L2PeriodicDistance{1.0f};
+
+    auto tree = wenda::kdtree::KDTree(positions);
+    wenda::kdtree::KDTreeQueryStatistics statistics;
+    auto result = tree.find_closest(query, 4, distance, &statistics);
+
+    auto naive_result = find_nearest_naive(positions, query, 4, distance);
+
+    ASSERT_TRUE(std::is_sorted(result.begin(), result.end()));
+
+    ASSERT_FLOAT_EQ(result[0].first, naive_result[0].first);
+    ASSERT_FLOAT_EQ(result[1].first, naive_result[1].first);
+    ASSERT_FLOAT_EQ(result[2].first, naive_result[2].first);
+    ASSERT_FLOAT_EQ(result[3].first, naive_result[3].first);
+
+    ASSERT_EQ(result[0].second, naive_result[0].second);
+    ASSERT_EQ(result[1].second, naive_result[1].second);
+    ASSERT_EQ(result[2].second, naive_result[2].second);
+    ASSERT_EQ(result[3].second, naive_result[3].second);
+
+    ASSERT_GT(statistics.nodes_pruned, 0);
+    ASSERT_GT(statistics.nodes_visited, 0);
+    ASSERT_LT(statistics.nodes_visited, positions.size());
+}
+
 INSTANTIATE_TEST_SUITE_P(
     BuildAndFindNearestSmall, KDTreeRandomTest, testing::Values(100, 1000, 10000));
 
