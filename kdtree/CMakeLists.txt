@@ -25,6 +25,7 @@ target_include_directories(kdtree PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/../third_pa
 
 add_executable(kdtree_main src/cpp/main.cpp)
 target_link_libraries(kdtree_main PRIVATE kdtree)
+target_include_directories(kdtree_main PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/random123/include)
 
 add_executable(kdtree_test src/cpp/test.cpp)
 target_link_libraries(kdtree_test PRIVATE kdtree gtest_main)

@@ -1,23 +1,34 @@
 #include <chrono>
 #include <fstream>
 #include <iostream>
-#include <random>
 #include <string>
 
 #include <cxxopts.h>
+#include <Random123/philox.h>
+#include <Random123/uniform.hpp>
 
 #include "kdtree.hpp"
 
 namespace {
 
-template <typename Dist>
-std::vector<std::array<float, 3>> fill_random_positions(int n, Dist const &dist) {
+std::vector<std::array<float, 3>> fill_random_positions(int n, unsigned int seed) {
     std::vector<std::array<float, 3>> positions(n);
 
+    typedef r123::Philox4x32 RNG;
+    RNG rng;
+
+
+    RNG::ctr_type c = {{}};
+    RNG::ukey_type uk = {{}};
+    uk[0] = seed;
+
     for (int i = 0; i < n; ++i) {
-        positions[i][0] = dist();
-        positions[i][1] = dist();
-        positions[i][2] = dist();
+        c.v[0] = i;
+        auto r = rng(c, uk);
+
+        positions[i][0] = r123::u01<float>(r[0]);
+        positions[i][1] = r123::u01<float>(r[1]);
+        positions[i][2] = r123::u01<float>(r[2]);
     }
 
     return positions;
@@ -76,10 +87,7 @@ BenchmarkResult benchmark_kdtree_random(
     int n, BenchmarkConfig const &config,
     wenda::kdtree::KDTreeConfiguration const &tree_config = {}) {
 
-    std::mt19937_64 rng(42);
-    std::uniform_real_distribution<float> dist(0.0f, 1.0f);
-
-    auto positions = fill_random_positions(n, [&]() { return dist(rng); });
+    auto positions = fill_random_positions(n, 42);
     return benchmark_lookup_same(positions, config, tree_config);
 }
 
