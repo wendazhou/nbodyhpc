@@ -15,8 +15,8 @@ struct KDTreeQueryStatistics {
 };
 
 struct KDTreeConfiguration {
-    int max_threads = 0;
     int leaf_size = 8;
+    int max_threads = 0;
 };
 
 class KDTree {
