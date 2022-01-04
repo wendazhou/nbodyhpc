@@ -44,6 +44,8 @@ struct BenchmarkResult {
 struct BenchmarkConfig {
     size_t num_queries;
     int num_neighbors = 16;
+    bool periodic = false;
+    float box_size = 1.0f;
 };
 
 BenchmarkResult benchmark_lookup_same(
@@ -65,7 +67,14 @@ BenchmarkResult benchmark_lookup_same(
 
     for (size_t i = 0; i < num_queries; ++i) {
         auto const &pos = positions[i];
-        auto nearest = tree.find_closest(pos, config.num_neighbors, wenda::kdtree::L2Distance{}, &statistics);
+        std::vector<std::pair<float, uint32_t>> nearest;
+
+        if (config.periodic) {
+            nearest = tree.find_closest(pos, config.num_neighbors, wenda::kdtree::L2PeriodicDistance{config.box_size}, &statistics);
+        }
+        else {
+            nearest = tree.find_closest(pos, config.num_neighbors, wenda::kdtree::L2Distance{}, &statistics);
+        }
         total_distance += nearest[0].first;
         total_points_visited += statistics.points_visited;
     }
@@ -123,6 +132,8 @@ int main(int argc, char *argv[]) {
         ("q,num-queries", "Number of queries to perform", cxxopts::value<uint32_t>()->default_value("500000"))
         ("t,threads", "Number of threads to use", cxxopts::value<int>()->default_value("-1"))
         ("leaf-size", "Size of kd-tree leaves", cxxopts::value<int>()->default_value("8"))
+        ("periodic", "Use periodic boundary conditions", cxxopts::value<bool>()->default_value("false"))
+        ("box_size", "Box size when using periodic boundary conditions", cxxopts::value<float>()->default_value("1.0"))
         ("f,file", "File to use for benchmarking", cxxopts::value<std::string>()->default_value(""))
         ("h,help", "Print help");
     // clang-format on
@@ -135,7 +146,9 @@ int main(int argc, char *argv[]) {
 
     BenchmarkConfig config {
         .num_queries = opts["num-queries"].as<uint32_t>(),
-        .num_neighbors = opts["num-neighbors"].as<int>()
+        .num_neighbors = opts["num-neighbors"].as<int>(),
+        .periodic = opts["periodic"].as<bool>(),
+        .box_size = opts["box_size"].as<float>()
     };
 
     wenda::kdtree::KDTreeConfiguration tree_config {
