@@ -118,7 +118,7 @@ ext_modules = [
 setup(
     name="nbodyhpc-kdtree",
     version="0.0.1",
-    description="A fast kd-tree for nearest-neighbor queries in 2d/3d periodic spaces",
+    description="A fast kd-tree for nearest-neighbor queries in 2d/3d (periodic) spaces",
     author="Wenda Zhou",
     license="MIT",
     packages=find_namespace_packages(where="src/python", include=["nbodyhpc.*"]),
