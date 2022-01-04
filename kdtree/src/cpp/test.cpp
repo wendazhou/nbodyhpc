@@ -124,7 +124,7 @@ TEST_P(KDTreeRandomTest, BuildAndFindNearestPeriodic) {
     auto positions = fill_random_positions<float, 3>(GetParam(), 42);
     std::array<float, 3> query = {0.5, 0.5, 0.5};
 
-    auto distance = wenda::kdtree::L2PeriodicDistance{1.0f};
+    auto distance = wenda::kdtree::L2PeriodicDistance<float>{1.0f};
 
     auto tree = wenda::kdtree::KDTree(positions);
     wenda::kdtree::KDTreeQueryStatistics statistics;

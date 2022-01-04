@@ -70,7 +70,7 @@ BenchmarkResult benchmark_lookup_same(
         std::vector<std::pair<float, uint32_t>> nearest;
 
         if (config.periodic) {
-            nearest = tree.find_closest(pos, config.num_neighbors, wenda::kdtree::L2PeriodicDistance{config.box_size}, &statistics);
+            nearest = tree.find_closest(pos, config.num_neighbors, wenda::kdtree::L2PeriodicDistance<float>{config.box_size}, &statistics);
         }
         else {
             nearest = tree.find_closest(pos, config.num_neighbors, wenda::kdtree::L2Distance{}, &statistics);
@@ -131,7 +131,7 @@ int main(int argc, char *argv[]) {
         ("num-neighbors", "Number of neighbors to find", cxxopts::value<int>()->default_value("16"))
         ("q,num-queries", "Number of queries to perform", cxxopts::value<uint32_t>()->default_value("500000"))
         ("t,threads", "Number of threads to use", cxxopts::value<int>()->default_value("-1"))
-        ("leaf-size", "Size of kd-tree leaves", cxxopts::value<int>()->default_value("8"))
+        ("leaf-size", "Size of kd-tree leaves", cxxopts::value<int>()->default_value("64"))
         ("periodic", "Use periodic boundary conditions", cxxopts::value<bool>()->default_value("false"))
         ("box_size", "Box size when using periodic boundary conditions", cxxopts::value<float>()->default_value("1.0"))
         ("f,file", "File to use for benchmarking", cxxopts::value<std::string>()->default_value(""))
