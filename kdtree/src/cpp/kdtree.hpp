@@ -53,6 +53,62 @@ struct L2Distance {
     }
 };
 
+template <typename T> struct L2PeriodicDistance {
+    T box_size_;
+
+    template <size_t R>
+    T operator()(std::array<T, R> const &left, std::array<T, R> const &right) const {
+        T result = 0;
+
+        for (size_t i = 0; i < R; ++i) {
+            auto delta = left[i] - right[i];
+
+            if (delta > 0.5 * box_size_) {
+                delta -= box_size_;
+            } else if (delta < -0.5 * box_size_) {
+                delta += box_size_;
+            }
+
+            result += delta * delta;
+        }
+
+        return result;
+    }
+
+    template <size_t R>
+    T box_distance(std::array<T, R> const &point, std::array<T, 2 * R> const &box) const {
+        T result = 0;
+
+        for (size_t i = 0; i < R; ++i) {
+            auto delta_left_nowrap = std::max(box[2 * i] - point[i], T{0});
+            auto delta_left_wrap = std::max(point[i] - box[2 * i + 1] - box_size_, T{0});
+
+            auto delta_right_nowrap = std::max(point[i] - box[2 * i + 1], T{0});
+            auto delta_right_wrap = std::max(box[2 * i] - point[i] + box_size_, T{0});
+
+            auto delta_left = std::min(delta_left_nowrap, delta_left_wrap);
+            auto delta_right = std::min(delta_right_nowrap, delta_right_wrap);
+
+            result += delta_left * delta_left + delta_right * delta_right;
+        }
+
+        return result;
+    }
+
+    T postprocess(T value) const { return std::sqrt(value); }
+
+    template <size_t R> std::array<T, 2 * R> initial_box(std::array<T, R> const &) const {
+        std::array<T, 2 * R> result;
+
+        for (size_t i = 0; i < R; ++i) {
+            result[2 * i] = 0;
+            result[2 * i + 1] = box_size_;
+        }
+
+        return result;
+    }
+};
+
 struct KDTreeQueryStatistics {
     size_t nodes_visited;
     size_t nodes_pruned;

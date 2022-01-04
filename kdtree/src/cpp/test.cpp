@@ -62,7 +62,7 @@ std::vector<std::pair<float, uint32_t>> find_nearest_naive(
     std::vector result(std::move(wenda::kdtree::get_container_from_adapter(distances)));
     std::sort(result.begin(), result.end());
 
-    for(auto &p : result) {
+    for (auto &p : result) {
         p.first = std::sqrt(p.first);
     }
 
@@ -129,3 +129,33 @@ TEST_P(KDTreeRandomTest, BuildAndFindNearestClassMT) {
 
 INSTANTIATE_TEST_SUITE_P(
     BuildAndFindNearestSmall, KDTreeRandomTest, testing::Values(100, 1000, 10000));
+
+TEST(KDTreeMetric, TestL2PeriodicBox) {
+    auto positions = fill_random_positions(100, 42);
+    std::array<float, 6> box = {0.2f, 0.5f, 0.4f, 0.6f, 0.0f, 0.1f};
+
+    wenda::kdtree::L2Distance distance_naive;
+    wenda::kdtree::L2PeriodicDistance<float> distance_periodic{1.0f};
+
+    for (auto const &p : positions) {
+        auto dist = distance_periodic.box_distance(p, box);
+
+        auto dist_naive = std::numeric_limits<float>::max();
+
+        for (int i1 = 0; i1 < 3; ++i1) {
+            for(int i2 = 0; i2 < 3; ++i2) {
+                for(int i3 = 0; i3 < 3; ++i3) {
+                    auto p_mod = p;
+                    p_mod[0] += (i1 - 1);
+                    p_mod[1] += (i2 - 1);
+                    p_mod[2] += (i3 - 1);
+
+                    auto d = distance_naive.box_distance(p_mod, box);
+                    dist_naive = std::min(d, dist_naive);
+                }
+            }
+        }
+
+        ASSERT_FLOAT_EQ(dist, dist_naive);
+    }
+}
