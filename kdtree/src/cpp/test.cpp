@@ -11,22 +11,12 @@
 
 namespace {
 
-float l2_distance_squared(std::array<float, 3> const &left, std::array<float, 3> const &right) {
-    float result = 0;
-
-    for (size_t i = 0; i < 3; ++i) {
-        result += (left[i] - right[i]) * (left[i] - right[i]);
-    }
-
-    return result;
-}
-
 template <typename T, size_t R>
-std::vector<std::array<T, R>> fill_random_positions(int n, unsigned int seed) {
+std::vector<std::array<T, R>> fill_random_positions(int n, unsigned int seed, float boxsize=1.0f) {
     std::vector<std::array<T, R>> positions(n);
 
     std::mt19937 rng(seed);
-    std::uniform_real_distribution<T> dist(0.0f, 1.0f);
+    std::uniform_real_distribution<T> dist(0.0f, boxsize);
 
     for (int i = 0; i < n; ++i) {
         for (int j = 0; j < R; ++j) {
@@ -70,7 +60,7 @@ TEST_P(KDTreeRandomTest, BuildAndFindNearestClass) {
     auto positions = fill_random_positions<float, 3>(GetParam(), 42);
     std::array<float, 3> query = {0.5, 0.5, 0.5};
 
-    auto tree = wenda::kdtree::KDTree(positions);
+    auto tree = wenda::kdtree::KDTree(positions, {.leaf_size = 8});
     wenda::kdtree::KDTreeQueryStatistics statistics;
     auto result = tree.find_closest(query, 4, wenda::kdtree::L2Distance{}, &statistics);
 
@@ -97,7 +87,7 @@ TEST_P(KDTreeRandomTest, BuildAndFindNearestClassMT) {
     auto positions = fill_random_positions<float, 3>(GetParam(), 42);
     std::array<float, 3> query = {0.5, 0.5, 0.5};
 
-    auto tree = wenda::kdtree::KDTree(positions, {.max_threads = -1});
+    auto tree = wenda::kdtree::KDTree(positions, {.leaf_size = 8, .max_threads = -1});
     wenda::kdtree::KDTreeQueryStatistics statistics;
     auto result = tree.find_closest(query, 4, wenda::kdtree::L2Distance{}, &statistics);
 
@@ -121,32 +111,36 @@ TEST_P(KDTreeRandomTest, BuildAndFindNearestClassMT) {
 }
 
 TEST_P(KDTreeRandomTest, BuildAndFindNearestPeriodic) {
-    auto positions = fill_random_positions<float, 3>(GetParam(), 42);
-    std::array<float, 3> query = {0.5, 0.5, 0.5};
+    float boxsize = 2.0f;
 
-    auto distance = wenda::kdtree::L2PeriodicDistance<float>{1.0f};
+    auto positions = fill_random_positions<float, 3>(GetParam(), 42, boxsize);
+    auto queries = fill_random_positions<float, 3>(100, 43, boxsize);
 
-    auto tree = wenda::kdtree::KDTree(positions);
+    auto distance = wenda::kdtree::L2PeriodicDistance<float>{boxsize};
+
+    auto tree = wenda::kdtree::KDTree(positions, {.leaf_size = 8});
     wenda::kdtree::KDTreeQueryStatistics statistics;
-    auto result = tree.find_closest(query, 4, distance, &statistics);
 
-    auto naive_result = find_nearest_naive(positions, query, 4, distance);
+    for (auto &query : queries) {
+        auto result = tree.find_closest(query, 4, distance, &statistics);
 
-    ASSERT_TRUE(std::is_sorted(result.begin(), result.end()));
+        auto naive_result = find_nearest_naive(positions, query, 4, distance);
 
-    ASSERT_FLOAT_EQ(result[0].first, naive_result[0].first);
-    ASSERT_FLOAT_EQ(result[1].first, naive_result[1].first);
-    ASSERT_FLOAT_EQ(result[2].first, naive_result[2].first);
-    ASSERT_FLOAT_EQ(result[3].first, naive_result[3].first);
+        ASSERT_TRUE(std::is_sorted(result.begin(), result.end()));
 
-    ASSERT_EQ(result[0].second, naive_result[0].second);
-    ASSERT_EQ(result[1].second, naive_result[1].second);
-    ASSERT_EQ(result[2].second, naive_result[2].second);
-    ASSERT_EQ(result[3].second, naive_result[3].second);
+        ASSERT_FLOAT_EQ(result[0].first, naive_result[0].first);
+        ASSERT_FLOAT_EQ(result[1].first, naive_result[1].first);
+        ASSERT_FLOAT_EQ(result[2].first, naive_result[2].first);
+        ASSERT_FLOAT_EQ(result[3].first, naive_result[3].first);
 
-    ASSERT_GT(statistics.nodes_pruned, 0);
-    ASSERT_GT(statistics.nodes_visited, 0);
-    ASSERT_LT(statistics.nodes_visited, positions.size());
+        ASSERT_EQ(result[0].second, naive_result[0].second);
+        ASSERT_EQ(result[1].second, naive_result[1].second);
+        ASSERT_EQ(result[2].second, naive_result[2].second);
+        ASSERT_EQ(result[3].second, naive_result[3].second);
+
+        ASSERT_GT(statistics.nodes_visited, 0);
+        ASSERT_LT(statistics.nodes_visited, positions.size());
+    }
 }
 
 INSTANTIATE_TEST_SUITE_P(

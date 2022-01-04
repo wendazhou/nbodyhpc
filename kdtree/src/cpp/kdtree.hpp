@@ -67,14 +67,10 @@ template <typename T> struct L2PeriodicDistance {
 
         for (size_t i = 0; i < R; ++i) {
             auto delta = left[i] - right[i];
+            auto delta_p = delta + box_size_;
+            auto delta_m = delta - box_size_;
 
-            if (delta > 0.5 * box_size_) {
-                delta -= box_size_;
-            } else if (delta < -0.5 * box_size_) {
-                delta += box_size_;
-            }
-
-            result += delta * delta;
+            result += std::min({delta * delta, delta_p * delta_p, delta_m * delta_m});
         }
 
         return result;

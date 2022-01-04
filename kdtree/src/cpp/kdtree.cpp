@@ -208,7 +208,13 @@ template <typename Distance = L2Distance> struct KDTreeQuery {
         {
             std::array<float, 6> close_bounds = bounds;
             close_bounds[close_boundary_dim] = node->split_;
-            compute(closer, close_bounds);
+            auto distance = distance_.box_distance(query_, close_bounds);
+
+            if (distance < distances_.top().first) {
+                compute(closer, close_bounds);
+            } else {
+                num_nodes_pruned += 1;
+            }
         }
 
         std::array<float, 6> far_bounds = bounds;

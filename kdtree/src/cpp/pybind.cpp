@@ -12,7 +12,7 @@ namespace py = pybind11;
 namespace {
 
 std::vector<wenda::kdtree::PositionAndIndex>
-make_positions_and_indices(py::array_t<float> const &points) {
+make_positions_and_indices(py::array_t<float> const &points, std::optional<float> box_size) {
     if (points.ndim() != 2 || points.shape(1) != 3) {
         throw std::runtime_error("positions must be a 2D array of shape (N, 3)");
     }
@@ -26,6 +26,27 @@ make_positions_and_indices(py::array_t<float> const &points) {
         positions[i].position[1] = points_view(i, 1);
         positions[i].position[2] = points_view(i, 2);
         positions[i].index = i;
+    }
+
+    if (box_size) {
+        auto box_size_value = *box_size;
+
+        auto all_in_box = std::all_of(
+            positions.begin(), positions.end(), [box_size_value](auto const &position_and_index) {
+                for (auto i = 0; i < 3; ++i) {
+                    if (position_and_index.position[i] < 0.0f ||
+                        position_and_index.position[i] > box_size_value) {
+                        return false;
+                    }
+                }
+
+                return true;
+            });
+
+        if (!all_in_box) {
+            throw std::runtime_error("When using periodic boundary conditions, all points must lie "
+                                     "within the box (0 <= x <= box_size).");
+        }
     }
 
     return positions;
@@ -45,12 +66,17 @@ class PyKDTree : public wenda::kdtree::KDTree {
     PyKDTree(PyKDTree const &) = default;
     PyKDTree(PyKDTree &&) = default;
 
+    size_t num_points() const noexcept { return positions().size(); }
+    size_t num_nodes() const noexcept { return nodes().size(); }
+    bool periodic() const noexcept { return periodic_; }
+    float box_size() const noexcept { return box_size_; }
+
     PyKDTree(
         py::array_t<float> points, int leaf_size, int max_threads, std::optional<float> box_size)
         : KDTree(
-              make_positions_and_indices(points),
+              make_positions_and_indices(points, box_size),
               {.leaf_size = leaf_size, .max_threads = max_threads}),
-          periodic_(box_size.has_value()), box_size_(box_size.value_or(1.0f)) {}
+          periodic_(box_size.has_value()), box_size_(box_size.value_or(0.0f)) {}
 
     static PyKDTree from_points(
         py::array_t<float> const &points, int leaf_size, int max_threads,
@@ -69,19 +95,18 @@ class PyKDTree : public wenda::kdtree::KDTree {
             throw std::runtime_error("positions must be a 2D array of shape (N, 3)");
         }
 
-        wenda::thread_pool pool(workers > 0 ? workers : std::thread::hardware_concurrency());
-
         auto num_points = points.shape(0);
         auto points_view = points.unchecked<2>();
 
         float *result_distances = new float[num_points * k];
         uint32_t *result_indices = new uint32_t[num_points * k];
 
+        std::function<void(size_t, size_t)> loop_fn;
+
         if (periodic_) {
-            py::gil_scoped_release nogil;
             auto distance_periodic = wenda::kdtree::L2PeriodicDistance<float>{box_size_};
 
-            pool.parallelize_loop(0, num_points, [&](size_t start, size_t end) {
+            loop_fn = [&, distance_periodic](size_t start, size_t end) {
                 for (size_t i = start; i < end; ++i) {
                     auto result = find_closest(
                         {points_view(i, 0), points_view(i, 1), points_view(i, 2)},
@@ -96,11 +121,18 @@ class PyKDTree : public wenda::kdtree::KDTree {
                         result.begin(), result.end(), result_indices + i * k, [](auto const &r) {
                             return r.second;
                         });
+
+                    // check for signals set by python
+                    if (i % 1000 == 0) {
+                        py::gil_scoped_acquire gil;
+                        if (PyErr_CheckSignals() != 0) {
+                            throw py::error_already_set();
+                        }
+                    }
                 }
-            });
+            };
         } else {
-            py::gil_scoped_release nogil;
-            pool.parallelize_loop(0, num_points, [&](size_t start, size_t end) {
+            loop_fn = [&](size_t start, size_t end) {
                 for (size_t i = start; i < end; ++i) {
                     auto result = find_closest(
                         {points_view(i, 0), points_view(i, 1), points_view(i, 2)},
@@ -115,8 +147,26 @@ class PyKDTree : public wenda::kdtree::KDTree {
                         result.begin(), result.end(), result_indices + i * k, [](auto const &r) {
                             return r.second;
                         });
+
+                    // check for signals set by python
+                    if (i % 1000 == 0) {
+                        py::gil_scoped_acquire gil;
+                        if (PyErr_CheckSignals() != 0) {
+                            throw py::error_already_set();
+                        }
+                    }
                 }
-            });
+            };
+        }
+
+        if (workers == 1) {
+            // workers = 1 indicates that no threading is desired.
+            py::gil_scoped_release nogil;
+            loop_fn(0, num_points);
+        } else {
+            wenda::thread_pool pool(workers > 0 ? workers : std::thread::hardware_concurrency());
+            py::gil_scoped_release nogil;
+            pool.parallelize_loop(0, num_points, loop_fn);
         }
 
         py::capsule free_result_distances(
@@ -150,5 +200,15 @@ PYBIND11_MODULE(_impl, m) {
             py::arg("points"),
             py::arg("leafsize") = 64,
             py::arg("max_threads") = -1,
-            py::arg("boxsize") = std::nullopt);
+            py::arg("boxsize") = std::nullopt)
+        .def(
+            "query",
+            &wenda::kdtree::PyKDTree::query,
+            py::arg("points"),
+            py::arg("k") = 1,
+            py::arg("workers") = 1)
+        .def_property_readonly("n", &wenda::kdtree::PyKDTree::num_points)
+        .def_property_readonly("size", &wenda::kdtree::PyKDTree::num_nodes)
+        .def_property_readonly("periodic", &wenda::kdtree::PyKDTree::periodic)
+        .def_property_readonly("boxsize", &wenda::kdtree::PyKDTree::box_size);
 }

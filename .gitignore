@@ -11,5 +11,6 @@ __pycache__/
 *.pyc
 *.whl
 notebooks/
+.pytest_cache/
 
 compile_commands.json
