@@ -46,13 +46,10 @@ target_link_options(kdtree PUBLIC $<$<CONFIG:DEBUG>:-fsanitize=address>)
 target_include_directories(kdtree PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/misc)
 set_property(TARGET kdtree PROPERTY POSITION_INDEPENDENT_CODE ON)
 
-if(NOT SKBUILD)
-    # Only build main executable when not building python extension through setup.py
-    add_executable(kdtree_main src/cpp/main.cpp)
-    target_link_libraries(kdtree_main PRIVATE kdtree)
-    target_include_directories(kdtree_main PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/random123/include)
-    target_include_directories(kdtree_main PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/misc)
-endif()
+add_executable(kdtree_main src/cpp/main.cpp)
+target_link_libraries(kdtree_main PRIVATE kdtree)
+target_include_directories(kdtree_main PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/random123/include)
+target_include_directories(kdtree_main PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/misc)
 
 
 pybind11_add_module(_impl src/cpp/pybind.cpp)

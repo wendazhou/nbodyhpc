@@ -87,10 +87,8 @@ target_link_libraries(rasterizer PRIVATE ${CMAKE_DL_LIBS} Threads::Threads)
 target_include_directories(rasterizer PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_include_directories(rasterizer PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/misc)
 
-if (NOT SKBUILD)
-    add_executable(rasterizer_main src/cpp/main.cpp  src/cpp/lodepng.cpp)
-    target_link_libraries(rasterizer_main PRIVATE rasterizer)
-endif()
+add_executable(rasterizer_main src/cpp/main.cpp  src/cpp/lodepng.cpp)
+target_link_libraries(rasterizer_main PRIVATE rasterizer)
 
 pybind11_add_module(_impl src/cpp/pybind.cpp)
 target_link_libraries(_impl PRIVATE Vulkan::Vulkan ${CMAKE_DL_LIBS} Threads::Threads rasterizer)
