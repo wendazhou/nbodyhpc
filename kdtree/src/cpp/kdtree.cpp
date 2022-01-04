@@ -52,12 +52,12 @@ struct NullSynchonization {
 
 template <typename Synchronization = MutexLockSynchronization> struct KDTreeBuilder {
     std::vector<KDTree::KDTreeNode> &nodes_;
-    tcb::span<std::array<float, 3>> positions_;
+    tcb::span<PositionAndIndex> positions_;
     size_t leaf_size_;
     typename Synchronization::mutex_t mutex_;
 
     KDTreeBuilder(
-        std::vector<KDTree::KDTreeNode> &nodes, tcb::span<std::array<float, 3>> positions,
+        std::vector<KDTree::KDTreeNode> &nodes, tcb::span<PositionAndIndex> positions,
         size_t leaf_size)
         : nodes_(nodes), positions_(positions), leaf_size_(leaf_size) {}
 
@@ -81,11 +81,11 @@ template <typename Synchronization = MutexLockSynchronization> struct KDTreeBuil
             positions.begin(),
             median_it,
             positions.end(),
-            [dimension](std::array<float, 3> const &a, std::array<float, 3> const &b) {
-                return a[dimension] < b[dimension];
+            [dimension](PositionAndIndex const &a, PositionAndIndex const &b) {
+                return a.position[dimension] < b.position[dimension];
             });
 
-        float split = (*median_it)[dimension];
+        float split = median_it->position[dimension];
 
         uint32_t current_idx;
 
@@ -152,27 +152,36 @@ T distance_to_box(std::array<T, R> const &point, std::array<T, 2 * R> const &box
     return result;
 }
 
+struct PairLessFirst {
+    bool operator()(std::pair<float, uint32_t> const &left,
+                    std::pair<float, uint32_t> const &right) const {
+        return left.first < right.first;
+    }
+};
+
 //! Utility structure used to store state of KD-tree search.
 struct KDTreeQuery {
-    tcb::span<const std::array<float, 3>> positions_;
+    typedef std::pair<float, uint32_t> result_t;
+
+    tcb::span<const PositionAndIndex> positions_;
     tcb::span<const KDTree::KDTreeNode> nodes_;
     std::array<float, 3> const &query_;
-    std::priority_queue<float> distances_;
+    std::priority_queue<result_t, std::vector<result_t>, PairLessFirst> distances_;
     size_t num_nodes_visited = 0;
     size_t num_nodes_pruned = 0;
     size_t num_points_visited = 0;
 
     KDTreeQuery(KDTree const &tree, std::array<float, 3> const &query, size_t k)
         : positions_(tree.positions()), nodes_(tree.nodes()), query_(query),
-          distances_(std::less<float>{}, std::vector<float>(k, std::numeric_limits<float>::max())) {
+          distances_(PairLessFirst{}, std::vector<result_t>(k, {std::numeric_limits<float>::max(), -1})) {
     }
 
-    bool push_point(std::array<float, 3> const &p) {
-        auto dist = l2_distance(p, query_);
+    bool push_point(PositionAndIndex const &p) {
+        auto dist = l2_distance(p.position, query_);
 
-        if (dist < distances_.top()) {
+        if (dist < distances_.top().first) {
             distances_.pop();
-            distances_.push(dist);
+            distances_.push({dist, p.index});
             return true;
         }
 
@@ -183,8 +192,7 @@ struct KDTreeQuery {
         num_nodes_visited += 1;
 
         if (node->dimension_ == -1) {
-            tcb::span<const std::array<float, 3>> node_positions(
-                positions_.data() + node->left_, positions_.data() + node->right_);
+            auto node_positions = positions_.subspan(node->left_, node->right_ - node->left_);
 
             for (auto const &p : node_positions) {
                 push_point(p);
@@ -217,7 +225,7 @@ struct KDTreeQuery {
         auto distance = distance_to_box(query_, far_bounds);
         auto delta_dimension = query_[node->dimension_] - node->split_;
 
-        if (distances_.top() < distance) {
+        if (distances_.top().first < distance) {
             num_nodes_pruned += 1;
             return;
         }
@@ -229,10 +237,14 @@ struct KDTreeQuery {
 } // namespace
 
 KDTree::KDTree(tcb::span<const std::array<float, 3>> positions, KDTreeConfiguration const &config)
-    : positions_(positions.begin(), positions.end()) {
+    : positions_(positions.size()), max_leaf_size_(config.leaf_size) {
 
     if (positions.size() > static_cast<size_t>(std::numeric_limits<uint32_t>::max())) {
         throw std::runtime_error("More than uint32_t points are not supported.");
+    }
+
+    for (uint32_t i = 0; i < positions.size(); ++i) {
+        positions_[i] = {positions[i], i};
     }
 
     const size_t num_points_per_thread = 5000000;
@@ -254,7 +266,7 @@ KDTree::KDTree(tcb::span<const std::array<float, 3>> positions, KDTreeConfigurat
     }
 }
 
-std::vector<float> KDTree::find_closest(
+std::vector<std::pair<float, uint32_t>> KDTree::find_closest(
     std::array<float, 3> const &position, size_t k, KDTreeQueryStatistics *statistics) const {
 
     KDTreeQuery query(*this, position, k);
@@ -274,7 +286,7 @@ std::vector<float> KDTree::find_closest(
     }
 
     std::vector result(std::move(get_container_from_adapter(query.distances_)));
-    std::sort(result.begin(), result.end());
+    std::sort(result.begin(), result.end(), PairLessFirst{});
     return result;
 }
 

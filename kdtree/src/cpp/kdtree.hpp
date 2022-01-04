@@ -19,6 +19,11 @@ struct KDTreeConfiguration {
     int max_threads = 0;
 };
 
+struct PositionAndIndex {
+    std::array<float, 3> position;
+    uint32_t index;
+};
+
 class KDTree {
   public:
     /** This structure represents a single node in the KD-tree
@@ -42,7 +47,8 @@ class KDTree {
 
   private:
     std::vector<KDTreeNode> nodes_;
-    std::vector<std::array<float, 3>> positions_;
+    std::vector<PositionAndIndex> positions_;
+    uint32_t max_leaf_size_;
 
   public:
     /** Builds a new KD-tree from the given positions.
@@ -55,9 +61,19 @@ class KDTree {
     KDTree(KDTree &&) noexcept = default;
 
     tcb::span<const KDTreeNode> nodes() const noexcept { return nodes_; }
-    tcb::span<const std::array<float, 3>> positions() const noexcept { return positions_; }
+    tcb::span<const PositionAndIndex> positions() const noexcept { return positions_; }
 
-    std::vector<float> find_closest(
+    /** Searches the tree for the nearest neighbors of the given query point.
+     * 
+     * @param position The point at which to query
+     * @param k The number of nearest neighbors to return
+     * @param statistics[out] Optional pointer to a KDTreeQueryStatistics structure to store statistics about the query.
+     * 
+     * @returns A vector of the nearest neighbors, sorted by distance. Each neighbor is represented by a pair of a distance and an index
+     *          corresponding to the index of the point in the original positions array used to construct the tree.
+     * 
+     */
+    std::vector<std::pair<float, uint32_t>> find_closest(
         std::array<float, 3> const &position, size_t k,
         KDTreeQueryStatistics *statistics = nullptr) const;
 };

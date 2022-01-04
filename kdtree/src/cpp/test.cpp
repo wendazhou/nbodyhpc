@@ -46,21 +46,20 @@ float find_nearest_naive(
         [&](std::array<float, 3> const &x) { return l2_distance_squared(x, query); });
 }
 
-std::vector<float> find_nearest_naive(
+std::vector<std::pair<float, uint32_t>> find_nearest_naive(
     tcb::span<const std::array<float, 3>> positions, const std::array<float, 3> &query, int k) {
-    std::priority_queue<float> distances(
-        std::less<float>{}, std::vector<float>(k, std::numeric_limits<float>::max()));
+    std::priority_queue<std::pair<float, uint32_t>> distances(
+        {}, std::vector<std::pair<float, uint32_t>>(k, {std::numeric_limits<float>::max(), -1}));
 
-    for (auto const &pos : positions) {
-        auto distance = l2_distance_squared(pos, query);
-
-        if (distance < distances.top()) {
+    for (uint32_t i = 0; i < positions.size(); ++i) {
+        auto dist = l2_distance_squared(positions[i], query);
+        if (dist < distances.top().first) {
             distances.pop();
-            distances.push(distance);
+            distances.push({dist, i});
         }
     }
 
-    std::vector<float> result(std::move(wenda::kdtree::get_container_from_adapter(distances)));
+    std::vector result(std::move(wenda::kdtree::get_container_from_adapter(distances)));
     std::sort(result.begin(), result.end());
     return result;
 }
@@ -81,10 +80,15 @@ TEST_P(KDTreeRandomTest, BuildAndFindNearestClass) {
 
     ASSERT_TRUE(std::is_sorted(result.begin(), result.end()));
 
-    ASSERT_FLOAT_EQ(result[0], naive_result[0]);
-    ASSERT_FLOAT_EQ(result[1], naive_result[1]);
-    ASSERT_FLOAT_EQ(result[2], naive_result[2]);
-    ASSERT_FLOAT_EQ(result[3], naive_result[3]);
+    ASSERT_FLOAT_EQ(result[0].first, naive_result[0].first);
+    ASSERT_FLOAT_EQ(result[1].first, naive_result[1].first);
+    ASSERT_FLOAT_EQ(result[2].first, naive_result[2].first);
+    ASSERT_FLOAT_EQ(result[3].first, naive_result[3].first);
+
+    ASSERT_EQ(result[0].second, naive_result[0].second);
+    ASSERT_EQ(result[1].second, naive_result[1].second);
+    ASSERT_EQ(result[2].second, naive_result[2].second);
+    ASSERT_EQ(result[3].second, naive_result[3].second);
 
     ASSERT_GT(statistics.nodes_pruned, 0);
     ASSERT_GT(statistics.nodes_visited, 0);
@@ -103,10 +107,15 @@ TEST_P(KDTreeRandomTest, BuildAndFindNearestClassMT) {
 
     ASSERT_TRUE(std::is_sorted(result.begin(), result.end()));
 
-    ASSERT_FLOAT_EQ(result[0], naive_result[0]);
-    ASSERT_FLOAT_EQ(result[1], naive_result[1]);
-    ASSERT_FLOAT_EQ(result[2], naive_result[2]);
-    ASSERT_FLOAT_EQ(result[3], naive_result[3]);
+    ASSERT_FLOAT_EQ(result[0].first, naive_result[0].first);
+    ASSERT_FLOAT_EQ(result[1].first, naive_result[1].first);
+    ASSERT_FLOAT_EQ(result[2].first, naive_result[2].first);
+    ASSERT_FLOAT_EQ(result[3].first, naive_result[3].first);
+
+    ASSERT_EQ(result[0].second, naive_result[0].second);
+    ASSERT_EQ(result[1].second, naive_result[1].second);
+    ASSERT_EQ(result[2].second, naive_result[2].second);
+    ASSERT_EQ(result[3].second, naive_result[3].second);
 
     ASSERT_GT(statistics.nodes_pruned, 0);
     ASSERT_GT(statistics.nodes_visited, 0);
