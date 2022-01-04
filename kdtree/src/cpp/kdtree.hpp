@@ -14,6 +14,11 @@ struct KDTreeQueryStatistics {
     size_t points_visited;
 };
 
+struct KDTreeConfiguration {
+    int max_threads = 0;
+    int leaf_size = 8;
+};
+
 class KDTree {
   public:
     /** This structure represents a single node in the KD-tree
@@ -45,7 +50,7 @@ class KDTree {
      * @param positions The positions to build the tree from.
      * @param multithreaded If True, indicates that multithreading should be used for construction.
      */
-    KDTree(tcb::span<const std::array<float, 3>> positions, bool multithreaded=false);
+    KDTree(tcb::span<const std::array<float, 3>> positions, KDTreeConfiguration const& config = {});
     KDTree(KDTree const &) = default;
     KDTree(KDTree &&) noexcept = default;
 

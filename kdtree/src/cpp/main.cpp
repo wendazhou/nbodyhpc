@@ -33,7 +33,7 @@ benchmark_lookup_same(tcb::span<const std::array<float, 3>> positions, int num_n
     std::chrono::high_resolution_clock clock;
 
     auto tree_build_start_t = clock.now();
-    auto tree = wenda::kdtree::KDTree(positions);
+    auto tree = wenda::kdtree::KDTree(positions, {.max_threads=-1});
     auto tree_build_end_t = clock.now();
 
     float total_distance = 0;
