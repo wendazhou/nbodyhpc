@@ -23,17 +23,6 @@ namespace wenda {
 
 namespace kdtree {
 
-template <typename T, size_t R>
-T l2_distance(std::array<T, R> const &left, std::array<T, R> const &right) {
-    T result = 0;
-
-    for (size_t i = 0; i < R; ++i) {
-        result += (left[i] - right[i]) * (left[i] - right[i]);
-    }
-
-    return result;
-}
-
 namespace {
 
 struct MutexLockSynchronization {
@@ -139,30 +128,18 @@ template <typename Synchronization = MutexLockSynchronization> struct KDTreeBuil
     }
 };
 
-template <typename T, size_t R>
-T distance_to_box(std::array<T, R> const &point, std::array<T, 2 * R> const &box) {
-    T result = 0;
-
-    for (size_t i = 0; i < R; ++i) {
-        auto delta_left = std::max(box[2 * i] - point[i], T{0});
-        auto delta_right = std::max(point[i] - box[2 * i + 1], T{0});
-        result += delta_left * delta_left + delta_right * delta_right;
-    }
-
-    return result;
-}
-
 struct PairLessFirst {
-    bool operator()(std::pair<float, uint32_t> const &left,
-                    std::pair<float, uint32_t> const &right) const {
+    bool operator()(
+        std::pair<float, uint32_t> const &left, std::pair<float, uint32_t> const &right) const {
         return left.first < right.first;
     }
 };
 
 //! Utility structure used to store state of KD-tree search.
-struct KDTreeQuery {
+template <typename Distance = L2Distance> struct KDTreeQuery {
     typedef std::pair<float, uint32_t> result_t;
 
+    Distance const &distance_;
     tcb::span<const PositionAndIndex> positions_;
     tcb::span<const KDTree::KDTreeNode> nodes_;
     std::array<float, 3> const &query_;
@@ -171,35 +148,38 @@ struct KDTreeQuery {
     size_t num_nodes_pruned = 0;
     size_t num_points_visited = 0;
 
-    KDTreeQuery(KDTree const &tree, std::array<float, 3> const &query, size_t k)
-        : positions_(tree.positions()), nodes_(tree.nodes()), query_(query),
-          distances_(PairLessFirst{}, std::vector<result_t>(k, {std::numeric_limits<float>::max(), -1})) {
-    }
+    KDTreeQuery(
+        KDTree const &tree, Distance const &distance, std::array<float, 3> const &query, size_t k)
+        : distance_(distance), positions_(tree.positions()), nodes_(tree.nodes()), query_(query),
+          distances_(
+              PairLessFirst{}, std::vector<result_t>(k, {std::numeric_limits<float>::max(), -1})) {}
 
-    bool push_point(PositionAndIndex const &p) {
-        auto dist = l2_distance(p.position, query_);
+    void process_leaf(KDTree::KDTreeNode const &node) {
+        auto node_positions = positions_.subspan(node.left_, node.right_ - node.left_);
+        uint32_t const num_points = node_positions.size();
 
-        if (dist < distances_.top().first) {
+        float current_distance = distances_.top().first;
+
+        for (uint32_t i = 0; i < num_points; ++i) {
+            auto dist = distance_(node_positions[i].position, query_);
+
+            if (dist >= current_distance) {
+                continue;
+            }
+
             distances_.pop();
-            distances_.push({dist, p.index});
-            return true;
+            distances_.push({dist, node_positions[i].index});
+            current_distance = distances_.top().first;
         }
 
-        return false;
+        num_points_visited += node_positions.size();
     }
 
     void compute(KDTree::KDTreeNode const *node, std::array<float, 6> const &bounds) {
         num_nodes_visited += 1;
 
         if (node->dimension_ == -1) {
-            auto node_positions = positions_.subspan(node->left_, node->right_ - node->left_);
-
-            for (auto const &p : node_positions) {
-                push_point(p);
-            }
-
-            num_points_visited += node_positions.size();
-
+            process_leaf(*node);
             return;
         }
 
@@ -222,7 +202,7 @@ struct KDTreeQuery {
         std::array<float, 6> far_bounds = bounds;
         far_bounds[far_boundary_dim] = node->split_;
 
-        auto distance = distance_to_box(query_, far_bounds);
+        auto distance = distance_.box_distance(query_, far_bounds);
         auto delta_dimension = query_[node->dimension_] - node->split_;
 
         if (distances_.top().first < distance) {
@@ -266,18 +246,13 @@ KDTree::KDTree(tcb::span<const std::array<float, 3>> positions, KDTreeConfigurat
     }
 }
 
+template <typename Distance>
 std::vector<std::pair<float, uint32_t>> KDTree::find_closest(
-    std::array<float, 3> const &position, size_t k, KDTreeQueryStatistics *statistics) const {
+    std::array<float, 3> const &position, size_t k, Distance const &distance,
+    KDTreeQueryStatistics *statistics) const {
 
-    KDTreeQuery query(*this, position, k);
-    query.compute(
-        &nodes_[0],
-        {-std::numeric_limits<float>::max(),
-         std::numeric_limits<float>::max(),
-         -std::numeric_limits<float>::max(),
-         std::numeric_limits<float>::max(),
-         -std::numeric_limits<float>::max(),
-         std::numeric_limits<float>::max()});
+    KDTreeQuery<Distance> query(*this, distance, position, k);
+    query.compute(&nodes_[0], distance.initial_box(position));
 
     if (statistics) {
         statistics->nodes_visited = query.num_nodes_visited;
@@ -287,8 +262,18 @@ std::vector<std::pair<float, uint32_t>> KDTree::find_closest(
 
     std::vector result(std::move(get_container_from_adapter(query.distances_)));
     std::sort(result.begin(), result.end(), PairLessFirst{});
+
+    // convert back to distances from distance-squared
+    for (auto &p : result) {
+        p.first = distance.postprocess(p.first);
+    }
+
     return result;
 }
+
+template std::vector<std::pair<float, uint32_t>> KDTree::find_closest<L2Distance>(
+    std::array<float, 3> const &position, size_t k, L2Distance const &,
+    KDTreeQueryStatistics *statistics) const;
 
 } // namespace kdtree
 

@@ -1,12 +1,57 @@
 #pragma once
 
 #include <array>
+#include <cmath>
+#include <limits>
 #include <vector>
 
 #include <span.hpp>
 
 namespace wenda {
 namespace kdtree {
+
+/** This structure encapsulates information to compute the l2 distance between two points.
+ *
+ */
+struct L2Distance {
+    template <typename T, size_t R>
+    T operator()(std::array<T, R> const &left, std::array<T, R> const &right) const {
+        T result = 0;
+
+        for (size_t i = 0; i < R; ++i) {
+            result += (left[i] - right[i]) * (left[i] - right[i]);
+        }
+
+        return result;
+    }
+
+    template <typename T, size_t R>
+    T box_distance(std::array<T, R> const &point, std::array<T, 2 * R> const &box) const {
+        T result = 0;
+
+        for (size_t i = 0; i < R; ++i) {
+            auto delta_left = std::max(box[2 * i] - point[i], T{0});
+            auto delta_right = std::max(point[i] - box[2 * i + 1], T{0});
+            result += delta_left * delta_left + delta_right * delta_right;
+        }
+
+        return result;
+    }
+
+    template <typename T> T postprocess(T value) const { return std::sqrt(value); }
+
+    template <typename T, size_t R>
+    std::array<T, 2 * R> initial_box(std::array<T, R> const &) const {
+        std::array<T, 2 * R> result;
+
+        for (size_t i = 0; i < R; ++i) {
+            result[2 * i] = std::numeric_limits<T>::lowest();
+            result[2 * i + 1] = std::numeric_limits<T>::max();
+        }
+
+        return result;
+    }
+};
 
 struct KDTreeQueryStatistics {
     size_t nodes_visited;
@@ -56,27 +101,35 @@ class KDTree {
      * @param positions The positions to build the tree from.
      * @param multithreaded If True, indicates that multithreading should be used for construction.
      */
-    KDTree(tcb::span<const std::array<float, 3>> positions, KDTreeConfiguration const& config = {});
+    KDTree(tcb::span<const std::array<float, 3>> positions, KDTreeConfiguration const &config = {});
     KDTree(KDTree const &) = default;
     KDTree(KDTree &&) noexcept = default;
 
     tcb::span<const KDTreeNode> nodes() const noexcept { return nodes_; }
     tcb::span<const PositionAndIndex> positions() const noexcept { return positions_; }
+    uint32_t max_leaf_size() const noexcept { return max_leaf_size_; }
 
     /** Searches the tree for the nearest neighbors of the given query point.
-     * 
+     *
      * @param position The point at which to query
      * @param k The number of nearest neighbors to return
-     * @param statistics[out] Optional pointer to a KDTreeQueryStatistics structure to store statistics about the query.
-     * 
-     * @returns A vector of the nearest neighbors, sorted by distance. Each neighbor is represented by a pair of a distance and an index
-     *          corresponding to the index of the point in the original positions array used to construct the tree.
-     * 
+     * @param statistics[out] Optional pointer to a KDTreeQueryStatistics structure to store
+     * statistics about the query.
+     *
+     * @returns A vector of the nearest neighbors, sorted by distance. Each neighbor is represented
+     * by a pair of a distance and an index corresponding to the index of the point in the original
+     * positions array used to construct the tree.
+     *
      */
+    template <typename Distance>
     std::vector<std::pair<float, uint32_t>> find_closest(
-        std::array<float, 3> const &position, size_t k,
+        std::array<float, 3> const &position, size_t k, Distance const &distance = {},
         KDTreeQueryStatistics *statistics = nullptr) const;
 };
+
+extern template std::vector<std::pair<float, uint32_t>> KDTree::find_closest<L2Distance>(
+    std::array<float, 3> const &position, size_t k, L2Distance const &,
+    KDTreeQueryStatistics *statistics) const;
 
 } // namespace kdtree
 } // namespace wenda

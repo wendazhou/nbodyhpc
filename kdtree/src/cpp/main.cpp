@@ -65,7 +65,7 @@ BenchmarkResult benchmark_lookup_same(
 
     for (size_t i = 0; i < num_queries; ++i) {
         auto const &pos = positions[i];
-        auto nearest = tree.find_closest(pos, config.num_neighbors, &statistics);
+        auto nearest = tree.find_closest(pos, config.num_neighbors, wenda::kdtree::L2Distance{}, &statistics);
         total_distance += nearest[0].first;
         total_points_visited += statistics.points_visited;
     }

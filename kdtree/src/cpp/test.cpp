@@ -61,6 +61,11 @@ std::vector<std::pair<float, uint32_t>> find_nearest_naive(
 
     std::vector result(std::move(wenda::kdtree::get_container_from_adapter(distances)));
     std::sort(result.begin(), result.end());
+
+    for(auto &p : result) {
+        p.first = std::sqrt(p.first);
+    }
+
     return result;
 }
 
@@ -74,7 +79,7 @@ TEST_P(KDTreeRandomTest, BuildAndFindNearestClass) {
 
     auto tree = wenda::kdtree::KDTree(positions);
     wenda::kdtree::KDTreeQueryStatistics statistics;
-    auto result = tree.find_closest(query, 4, &statistics);
+    auto result = tree.find_closest(query, 4, wenda::kdtree::L2Distance{}, &statistics);
 
     auto naive_result = find_nearest_naive(positions, query, 4);
 
@@ -101,7 +106,7 @@ TEST_P(KDTreeRandomTest, BuildAndFindNearestClassMT) {
 
     auto tree = wenda::kdtree::KDTree(positions, {.max_threads = -1});
     wenda::kdtree::KDTreeQueryStatistics statistics;
-    auto result = tree.find_closest(query, 4, &statistics);
+    auto result = tree.find_closest(query, 4, wenda::kdtree::L2Distance{}, &statistics);
 
     auto naive_result = find_nearest_naive(positions, query, 4);
 
