@@ -39,6 +39,18 @@ struct NullSynchonization {
     typedef NullLock lock_t;
 };
 
+std::vector<PositionAndIndex>
+make_position_and_indices(tcb::span<const std::array<float, 3>> const &positions) {
+    std::vector<PositionAndIndex> result(positions.size());
+
+    for (size_t i = 0; i < positions.size(); ++i) {
+        result[i].position = positions[i];
+        result[i].index = i;
+    }
+
+    return result;
+}
+
 template <typename Synchronization = MutexLockSynchronization> struct KDTreeBuilder {
     std::vector<KDTree::KDTreeNode> &nodes_;
     tcb::span<PositionAndIndex> positions_;
@@ -217,22 +229,22 @@ template <typename Distance = L2Distance> struct KDTreeQuery {
 } // namespace
 
 KDTree::KDTree(tcb::span<const std::array<float, 3>> positions, KDTreeConfiguration const &config)
-    : positions_(positions.size()), max_leaf_size_(config.leaf_size) {
+    : KDTree(make_position_and_indices(positions), config) {}
 
-    if (positions.size() > static_cast<size_t>(std::numeric_limits<uint32_t>::max())) {
+KDTree::KDTree(
+    std::vector<PositionAndIndex> &&positions_and_indices, KDTreeConfiguration const &config)
+    : positions_(std::move(positions_and_indices)) {
+
+    if (positions_.size() > static_cast<size_t>(std::numeric_limits<uint32_t>::max())) {
         throw std::runtime_error("More than uint32_t points are not supported.");
-    }
-
-    for (uint32_t i = 0; i < positions.size(); ++i) {
-        positions_[i] = {positions[i], i};
     }
 
     const size_t num_points_per_thread = 5000000;
     int max_threads =
         config.max_threads == -1 ? std::thread::hardware_concurrency() : config.max_threads;
 
-    if (max_threads > 1 && positions.size() >= 2 * num_points_per_thread) {
-        double num_threads = static_cast<double>(positions.size()) / num_points_per_thread;
+    if (max_threads > 1 && positions_.size() >= 2 * num_points_per_thread) {
+        double num_threads = static_cast<double>(positions_.size()) / num_points_per_thread;
         num_threads = std::max(num_threads, static_cast<double>(max_threads));
 
         int log2_threads = static_cast<int>(std::log2(num_threads));

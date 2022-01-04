@@ -10,10 +10,9 @@
 namespace wenda {
 namespace kdtree {
 
-/** This structure encapsulates information to compute the l2 distance between two points.
- *
- */
+//! This structure encapsulates information to compute the l2 distance between two points.
 struct L2Distance {
+    //! Computes the distance between two points.
     template <typename T, size_t R>
     T operator()(std::array<T, R> const &left, std::array<T, R> const &right) const {
         T result = 0;
@@ -25,6 +24,7 @@ struct L2Distance {
         return result;
     }
 
+    //! Computes the distance from a point to an axis-aligned box
     template <typename T, size_t R>
     T box_distance(std::array<T, R> const &point, std::array<T, 2 * R> const &box) const {
         T result = 0;
@@ -38,8 +38,10 @@ struct L2Distance {
         return result;
     }
 
+    //! Post-processes the result of the distance computation.
     template <typename T> T postprocess(T value) const { return std::sqrt(value); }
 
+    //! Returns a box with no constraints of the given dimension.
     template <typename T, size_t R>
     std::array<T, 2 * R> initial_box(std::array<T, R> const &) const {
         std::array<T, 2 * R> result;
@@ -53,9 +55,12 @@ struct L2Distance {
     }
 };
 
+//! This structure encapsulates information to compute l2 distance with periodic boundary conditions.
 template <typename T> struct L2PeriodicDistance {
+    //! Size of the box for periodic boundary conditions.
     T box_size_;
 
+    //! Computes the distance between two points.
     template <size_t R>
     T operator()(std::array<T, R> const &left, std::array<T, R> const &right) const {
         T result = 0;
@@ -75,6 +80,7 @@ template <typename T> struct L2PeriodicDistance {
         return result;
     }
 
+    //! Computes the distance from a point to an axis-aligned box which does not cross the periodic boundary.
     template <size_t R>
     T box_distance(std::array<T, R> const &point, std::array<T, 2 * R> const &box) const {
         T result = 0;
@@ -110,14 +116,21 @@ template <typename T> struct L2PeriodicDistance {
     }
 };
 
+//! Statistics of queries into a kd-tree.
 struct KDTreeQueryStatistics {
+    //! Number of nodes visited during the query.
     size_t nodes_visited;
+    //! Number of nodes pruned during the query.
     size_t nodes_pruned;
+    //! Number of points for which distance was evaluated during the query.
     size_t points_visited;
 };
 
+//! Configuration for building a kd-tree
 struct KDTreeConfiguration {
-    int leaf_size = 8;
+    //! Number of points in leaf nodes (where we switch to brute-force)
+    int leaf_size = 64;
+    //! Maximum number of threads to use during tree construction. If -1, use all available threads.
     int max_threads = 0;
 };
 
@@ -150,21 +163,31 @@ class KDTree {
   private:
     std::vector<KDTreeNode> nodes_;
     std::vector<PositionAndIndex> positions_;
-    uint32_t max_leaf_size_;
 
   public:
     /** Builds a new KD-tree from the given positions.
      *
      * @param positions The positions to build the tree from.
-     * @param multithreaded If True, indicates that multithreading should be used for construction.
+     * @param config Configuration to use when building the tree.
      */
     KDTree(tcb::span<const std::array<float, 3>> positions, KDTreeConfiguration const &config = {});
+
+    /** Builds a new KD-tree from the given positions.
+     * 
+     * This constructor makes use of a pre-allocated positions vector.
+     * To build from an array of positions, see other constructor.
+     * 
+     * @param positions_and_indices The positions and indices to build the tree from.
+     * @param config Configuration to use when building the tree.
+     * 
+     */
+    KDTree(std::vector<PositionAndIndex>&& positions_and_indices, KDTreeConfiguration const &config = {});
+
     KDTree(KDTree const &) = default;
     KDTree(KDTree &&) noexcept = default;
 
     tcb::span<const KDTreeNode> nodes() const noexcept { return nodes_; }
     tcb::span<const PositionAndIndex> positions() const noexcept { return positions_; }
-    uint32_t max_leaf_size() const noexcept { return max_leaf_size_; }
 
     /** Searches the tree for the nearest neighbors of the given query point.
      *
