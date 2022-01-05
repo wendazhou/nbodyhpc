@@ -9,6 +9,7 @@
 #include "kdtree.hpp"
 #include "kdtree_opt.hpp"
 #include "utils.hpp"
+#include "tournament_tree.hpp"
 
 using namespace wenda::kdtree;
 
@@ -76,6 +77,34 @@ TEST(OptInsertionTest, Avx2Insertion) {
 
         ASSERT_EQ(result_vanilla, result_avx);
     }
+}
+
+TEST(TournamentTree, TournamentTreeTest) {
+    std::vector<int> values(1000);
+    std::mt19937_64 rng(42);
+    std::uniform_int_distribution<int> dist(0, 1000000);
+
+    std::generate(values.begin(), values.end(), [&]() { return dist(rng); });
+
+    wenda::kdtree::TournamentTree<int> tree(13, std::numeric_limits<int>::lowest());
+
+    for (auto const& value : values) {
+        tree.replace_top(value);
+    }
+
+    std::vector<int> result;
+    tree.copy_values(std::back_inserter(result));
+
+    ASSERT_EQ(result.size(), 13);
+
+    std::vector<int> expected_result(13);
+    std::nth_element(values.begin(), values.begin() + 13, values.end(), std::greater<int>());
+    std::copy(values.begin(), values.begin() + 13, expected_result.begin());
+
+    std::sort(result.begin(), result.end());
+    std::sort(expected_result.begin(), expected_result.end());
+
+    ASSERT_EQ(result, expected_result);
 }
 
 

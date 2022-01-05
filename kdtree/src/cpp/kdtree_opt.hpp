@@ -128,8 +128,8 @@ template <> struct InsertShorterDistanceAVX<L2Distance> {
         // Buffer holding computed distances for this iteration of the unrolled loop.
         float distances_buffer[8];
 
-        size_t i = 0;
-        size_t num_points = positions.size();
+        ssize_t i = 0;
+        ssize_t num_points = static_cast<ssize_t>(positions.size());
 
         __m256 sum;
 
@@ -138,15 +138,17 @@ template <> struct InsertShorterDistanceAVX<L2Distance> {
         PositionAndIndex const *positions_ptr = positions.data();
 
         // main unrolled loop.
-        for (; i < num_points + 1 - 8; i += 8) {
+        for (; i < num_points - 7; i += 8) {
             v0 = _mm256_loadu_si256(reinterpret_cast<const __m256i *>(positions_ptr + i));
             v1 = _mm256_loadu_si256(reinterpret_cast<const __m256i *>(positions_ptr + i + 2));
             v2 = _mm256_loadu_si256(reinterpret_cast<const __m256i *>(positions_ptr + i + 4));
             v3 = _mm256_loadu_si256(reinterpret_cast<const __m256i *>(positions_ptr + i + 6));
 
+            assert(i + 7 < num_points);
+
             // prefetch next loop
-            _mm_prefetch(reinterpret_cast<const char *>(positions_ptr + i + 8), _MM_HINT_NTA);
-            _mm_prefetch(reinterpret_cast<const char *>(positions_ptr + i + 12), _MM_HINT_NTA);
+            //_mm_prefetch(reinterpret_cast<const char *>(positions_ptr + i + 8), _MM_HINT_NTA);
+            //_mm_prefetch(reinterpret_cast<const char *>(positions_ptr + i + 12), _MM_HINT_NTA);
 
             // extract indices from packed data.
             // Note that indices are not extracted in the original order, but rather
