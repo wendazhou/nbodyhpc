@@ -21,7 +21,7 @@ struct PairLessFirst {
 
 template <int i> __m256 dot_product(__m256 v, __m256 q) {
     __m256 delta = _mm256_sub_ps(v, q);
-    return _mm256_dp_ps(delta, delta, 0b11100000 + (1 << i));
+    return _mm256_dp_ps(delta, delta, 0b01110000 + (1 << i));
 }
 
 template <typename DistanceT> struct InsertShorterDistanceVanilla {
@@ -69,8 +69,6 @@ template <typename DistanceT, int Unroll> struct InsertShorterDistanceUnrolled {
         float current_best_distance = distances.top().first;
 
         for (; i < num_points + 1 - Unroll; i += Unroll) {
-            __builtin_prefetch(positions.data() + i + Unroll, 0, 0);
-
             for (int j = 0; j < Unroll; ++j) {
                 distances_buffer[j] = distance(positions[i + j].position, query);
                 indices_buffer[j] = positions[i + j].index;
@@ -114,7 +112,7 @@ template <> struct InsertShorterDistanceAVX<L2Distance> {
         queue_t &distances, L2Distance const &distance_func) const {
 
         __m128 q_half =
-            _mm_maskload_ps(query.data(), _mm_set_epi32(0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0));
+            _mm_maskload_ps(query.data(), _mm_set_epi32(0, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF));
         __m256 q = _mm256_set_m128(q_half, q_half);
 
         __m256 v[4];
@@ -138,11 +136,12 @@ template <> struct InsertShorterDistanceAVX<L2Distance> {
                 indices_buffer[j] = positions[i + j].index;
             }
 
+            sum = dot_product<0>(v[0], q);
             sum = _mm256_add_ps(sum, dot_product<1>(v[1], q));
             sum = _mm256_add_ps(sum, dot_product<2>(v[2], q));
             sum = _mm256_add_ps(sum, dot_product<3>(v[3], q));
 
-            sum = _mm256_permutevar8x32_ps(sum, _mm256_setr_epi32(0, 2, 4, 6, 1, 3, 5, 7));
+            sum = _mm256_permutevar8x32_ps(sum, _mm256_setr_epi32(0, 4, 1, 5, 2, 6, 3, 7));
 
             __m256 cmp =
                 _mm256_cmp_ps(sum, _mm256_broadcast_ss(&current_best_distance), _CMP_LT_OQ);
