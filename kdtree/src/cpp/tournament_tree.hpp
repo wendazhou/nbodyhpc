@@ -11,22 +11,45 @@ namespace wenda {
 
 namespace kdtree {
 
+namespace detail {
+std::vector<uint32_t> build_loser_tree_initial(uint32_t n) {
+    std::vector<std::pair<uint32_t, uint32_t>> winner_losers(2 * n);
+
+    for (uint32_t i = 0; i < n; ++i) {
+        winner_losers[i + n] = {i, i};
+    }
+
+    for (uint32_t i = n - 1; i > 0; --i) {
+        winner_losers[i] = {
+            std::max(winner_losers[2 * i].first, winner_losers[2 * i + 1].first),
+            std::min(winner_losers[2 * i].first, winner_losers[2 * i + 1].first)};
+    }
+
+    std::vector<uint32_t> result(2 * n);
+    std::transform(winner_losers.begin(), winner_losers.end(), result.begin(), [](const auto &p) {
+        return p.second;
+    });
+    return result;
+}
+} // namespace detail
+
 /** Tournament tree implementation for fast replace-top operations.
  *
  */
-template <typename T, typename Cmp = std::less<T> > class TournamentTree {
+template <typename T, typename Cmp = std::less<T>> class TournamentTree {
   private:
     typedef std::pair<T, uint32_t> value_t;
 
     std::vector<value_t> data_;
-    std::pair<T, uint32_t> root_;
     Cmp cmp_;
 
     void update_root_from_index(uint32_t idx) {
         value_t winner = data_[idx];
 
-        while(idx > 1) {
-            auto& other = data_[idx / 2];
+        while (idx > 1) {
+            idx /= 2;
+
+            auto &other = data_[idx];
 
             if (cmp_(winner.first, other.first)) {
                 // previous winner lost
@@ -34,42 +57,42 @@ template <typename T, typename Cmp = std::less<T> > class TournamentTree {
             }
         }
 
-        root_ = std::move(winner);
+        data_[0] = std::move(winner);
     }
 
   public:
-    TournamentTree(size_t n, T const &val) : data_(2 * n) {
-        for (size_t i = 0; i < n; ++i) {
-            data_[i + n] = {val, i + n};
-        }
+    /** Constructs a tournament tree with the given capacity and value.
+     * 
+     */
+    TournamentTree(uint32_t n, T const &val) : data_(2 * n) {
+        std::vector<uint32_t> losers = detail::build_loser_tree_initial(n);
+        std::transform(losers.begin(), losers.end(), data_.begin(), [&](uint32_t loser) {
+            return value_t{val, loser + n};
+        });
 
-        std::fill_n(data_.begin(), n, value_t{val, n});
+        data_[0] = value_t{val, 2 * n - 1};
     }
 
     TournamentTree(TournamentTree const&) = default;
+    TournamentTree(TournamentTree &&) = default;
 
-    T const& top() const {
-        return *root_.first;
-    }
+    //! Peek at the top element of the tree.
+    T const &top() const { return data_[0].first; }
 
+    //! Replace the top element of the tree with the given value.
     T replace_top(T const &val) {
-        if(cmp_(val, root_.first)) {
-            return root_.first;
-        }
+        std::pair<T, uint32_t> value{val, data_[0].second};
+        std::swap(data_[data_[0].second], value);
 
-        std::pair<T, uint32_t> value{val, root_.second};
-        std::swap(data_[root_.second], value);
-
-        update_root_from_index(root_.second);
+        update_root_from_index(data_[0].second);
 
         return value.first;
     }
 
-    template<typename OutIt>
-    void copy_values(OutIt it) const {
-        std::transform(
-            data_.begin() + data_.size() / 2, data_.end(), it,
-            [](value_t const& v) { return v.first; });
+    template <typename OutIt> void copy_values(OutIt it) const {
+        std::transform(data_.begin() + data_.size() / 2, data_.end(), it, [](value_t const &v) {
+            return v.first;
+        });
     }
 };
 

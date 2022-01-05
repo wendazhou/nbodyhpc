@@ -128,8 +128,8 @@ template <> struct InsertShorterDistanceAVX<L2Distance> {
         // Buffer holding computed distances for this iteration of the unrolled loop.
         float distances_buffer[8];
 
-        ssize_t i = 0;
-        ssize_t num_points = static_cast<ssize_t>(positions.size());
+        int i = 0;
+        int num_points = static_cast<int>(positions.size());
 
         __m256 sum;
 
