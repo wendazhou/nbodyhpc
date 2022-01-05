@@ -101,7 +101,7 @@ template <typename DistanceT, int Unroll> struct InsertShorterDistanceUnrolled {
     }
 };
 
-template <typename DistanceT> struct InsertShorterDistanceAVX;
+template <typename DistanceT> struct InsertShorterDistanceAVX : InsertShorterDistanceUnrolled<DistanceT, 4> {};
 
 template <> struct InsertShorterDistanceAVX<L2Distance> {
     typedef std::pair<float, uint32_t> result_t;
@@ -111,12 +111,20 @@ template <> struct InsertShorterDistanceAVX<L2Distance> {
         tcb::span<const PositionAndIndex> positions, std::array<float, 3> const &query,
         queue_t &distances, L2Distance const &distance_func) const {
 
+        // Load in the query vector, duplicated across the upper and lower lanes.
         __m128 q_half =
             _mm_maskload_ps(query.data(), _mm_set_epi32(0, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF));
         __m256 q = _mm256_set_m128(q_half, q_half);
 
-        __m256 v[4];
+        // Buffer holding the loaded positions + indices
+        // Each register can store 2 PositionAndIndex instances.
+        __m256i v[4];
+
+        // Buffer holding the indices for this iteration of the unrolled loop.
+        // Note that this buffer, along with the buffer below, are not in order compared
+        // to loop iteration order. However, their respective order is the same.
         uint32_t indices_buffer[8];
+        // Buffer holding computed distances for this iteration of the unrolled loop.
         float distances_buffer[8];
 
         size_t i = 0;
@@ -129,20 +137,29 @@ template <> struct InsertShorterDistanceAVX<L2Distance> {
         // main unrolled loop.
         for (; i < num_points + 1 - 8; i += 8) {
             for (int j = 0; j < 4; ++j) {
-                v[j] =
-                    _mm256_loadu_ps(reinterpret_cast<const float *>(positions.data() + i + 2 * j));
-            }
-            for (int j = 0; j < 8; ++j) {
-                indices_buffer[j] = positions[i + j].index;
+                v[j] = _mm256_loadu_si256(
+                    reinterpret_cast<const __m256i *>(positions.data() + i + 2 * j));
             }
 
-            sum = dot_product<0>(v[0], q);
-            sum = _mm256_add_ps(sum, dot_product<1>(v[1], q));
-            sum = _mm256_add_ps(sum, dot_product<2>(v[2], q));
-            sum = _mm256_add_ps(sum, dot_product<3>(v[3], q));
+            // extract indices from packed data.
+            // Note that indices are not extracted in the original order, but rather
+            // in the following order: 0, 2, 4, 6, 1, 3, 5, 7.
+            // However, this also corresponds to the order in which the dot products in sum are computed,
+            // hence there is no further adjustment required.
+            _mm256_storeu_si256(
+                reinterpret_cast<__m256i*>(indices_buffer),
+                _mm256_unpackhi_epi32(
+                    _mm256_unpackhi_epi32(v[0], v[2]), _mm256_unpackhi_epi32(v[1], v[3])));
 
-            sum = _mm256_permutevar8x32_ps(sum, _mm256_setr_epi32(0, 4, 1, 5, 2, 6, 3, 7));
+            // Accumulate squared distance for each position.
+            // By using the dot product instruction with careful selection of the output
+            // we can accumulate the distances in each segment of the vector register.
+            sum = dot_product<0>(_mm256_castsi256_ps(v[0]), q);
+            sum = _mm256_add_ps(sum, dot_product<1>(_mm256_castsi256_ps(v[1]), q));
+            sum = _mm256_add_ps(sum, dot_product<2>(_mm256_castsi256_ps(v[2]), q));
+            sum = _mm256_add_ps(sum, dot_product<3>(_mm256_castsi256_ps(v[3]), q));
 
+            // Evaluate whether we need to update the best distance.
             __m256 cmp =
                 _mm256_cmp_ps(sum, _mm256_broadcast_ss(&current_best_distance), _CMP_LT_OQ);
             int mask = _mm256_movemask_ps(cmp);
@@ -152,6 +169,7 @@ template <> struct InsertShorterDistanceAVX<L2Distance> {
                 continue;
             }
 
+            // Extract distances into stack buffer for use by scalar code.
             _mm256_storeu_ps(distances_buffer, sum);
 
             for (int j = 0; j < 8; ++j) {
