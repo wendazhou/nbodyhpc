@@ -130,7 +130,7 @@ struct KDTreeConfiguration {
     int max_threads = 0;
 };
 
-struct PositionAndIndex {
+struct alignas(16) PositionAndIndex {
     std::array<float, 3> position;
     uint32_t index;
 };

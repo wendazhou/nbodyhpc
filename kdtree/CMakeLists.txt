@@ -46,6 +46,12 @@ target_link_options(kdtree PUBLIC $<$<CONFIG:DEBUG>:-fsanitize=address>)
 target_include_directories(kdtree PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/third_party/misc)
 set_property(TARGET kdtree PROPERTY POSITION_INDEPENDENT_CODE ON)
 
+if(MSVC)
+    target_compile_options(kdtree PRIVATE /arch:AVX2)
+else()
+    target_compile_options(kdtree PUBLIC -mavx2 -mtune=haswell)
+endif()
+
 add_executable(kdtree_main src/cpp/main.cpp)
 target_link_libraries(kdtree_main PRIVATE kdtree)
 target_include_directories(kdtree_main PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/third_party/random123/include)
@@ -56,7 +62,7 @@ pybind11_add_module(_impl src/cpp/pybind.cpp)
 target_link_libraries(_impl PRIVATE kdtree)
 
 if(BUILD_TESTING)
-    add_executable(kdtree_test src/cpp/test.cpp)
+    add_executable(kdtree_test src/cpp/test.cpp src/cpp/test_opt.cpp)
     target_link_libraries(kdtree_test PRIVATE kdtree gtest_main)
 
     include(GoogleTest)

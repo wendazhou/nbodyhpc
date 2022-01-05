@@ -24,6 +24,13 @@ typename ContainerAdapter::container_type &get_container_from_adapter(ContainerA
     return hack::get(adapter);
 }
 
+/** Utility function to make an array of position and indices from the given positions.
+ * 
+ * @param positions The positions to convert.
+ * 
+ */
+std::vector<PositionAndIndex> make_position_and_indices(tcb::span<const std::array<float, 3>> const &positions);
+
 } // namespace kdtree
 
 } // namespace wenda

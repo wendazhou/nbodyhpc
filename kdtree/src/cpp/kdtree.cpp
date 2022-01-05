@@ -14,6 +14,7 @@
 #include <shared_mutex>
 #include <vector>
 
+#include "kdtree_opt.hpp"
 #include "utils.hpp"
 #include <span.hpp>
 
@@ -22,6 +23,18 @@
 namespace wenda {
 
 namespace kdtree {
+
+std::vector<PositionAndIndex>
+make_position_and_indices(tcb::span<const std::array<float, 3>> const &positions) {
+    std::vector<PositionAndIndex> result(positions.size());
+
+    for (size_t i = 0; i < positions.size(); ++i) {
+        result[i].position = positions[i];
+        result[i].index = i;
+    }
+
+    return result;
+}
 
 namespace {
 
@@ -38,18 +51,6 @@ struct NullSynchonization {
     typedef std::nullptr_t mutex_t;
     typedef NullLock lock_t;
 };
-
-std::vector<PositionAndIndex>
-make_position_and_indices(tcb::span<const std::array<float, 3>> const &positions) {
-    std::vector<PositionAndIndex> result(positions.size());
-
-    for (size_t i = 0; i < positions.size(); ++i) {
-        result[i].position = positions[i];
-        result[i].index = i;
-    }
-
-    return result;
-}
 
 template <typename Synchronization = MutexLockSynchronization> struct KDTreeBuilder {
     std::vector<KDTree::KDTreeNode> &nodes_;
@@ -140,13 +141,6 @@ template <typename Synchronization = MutexLockSynchronization> struct KDTreeBuil
     }
 };
 
-struct PairLessFirst {
-    bool operator()(
-        std::pair<float, uint32_t> const &left, std::pair<float, uint32_t> const &right) const {
-        return left.first < right.first;
-    }
-};
-
 //! Utility structure used to store state of KD-tree search.
 template <typename Distance = L2Distance> struct KDTreeQuery {
     typedef std::pair<float, uint32_t> result_t;
@@ -170,19 +164,8 @@ template <typename Distance = L2Distance> struct KDTreeQuery {
         uint32_t const num_points = node.right_ - node.left_;
         auto node_positions = positions_.subspan(node.left_, num_points);
 
-        float current_distance = distances_.top().first;
-
-        for (uint32_t i = 0; i < num_points; ++i) {
-            auto dist = distance_(node_positions[i].position, query_);
-
-            if (dist >= current_distance) {
-                continue;
-            }
-
-            distances_.pop();
-            distances_.push({dist, node_positions[i].index});
-            current_distance = distances_.top().first;
-        }
+        InsertShorterDistanceUnrolled<Distance, 4> insert_shorter_distance;
+        insert_shorter_distance(node_positions, query_, distances_, distance_);
 
         num_points_visited += node_positions.size();
     }
