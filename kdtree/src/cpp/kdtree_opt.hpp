@@ -101,7 +101,8 @@ template <typename DistanceT, int Unroll> struct InsertShorterDistanceUnrolled {
     }
 };
 
-template <typename DistanceT> struct InsertShorterDistanceAVX : InsertShorterDistanceUnrolled<DistanceT, 4> {};
+template <typename DistanceT>
+struct InsertShorterDistanceAVX : InsertShorterDistanceUnrolled<DistanceT, 4> {};
 
 template <> struct InsertShorterDistanceAVX<L2Distance> {
     typedef std::pair<float, uint32_t> result_t;
@@ -118,7 +119,7 @@ template <> struct InsertShorterDistanceAVX<L2Distance> {
 
         // Buffer holding the loaded positions + indices
         // Each register can store 2 PositionAndIndex instances.
-        __m256i v[4];
+        __m256i v0, v1, v2, v3;
 
         // Buffer holding the indices for this iteration of the unrolled loop.
         // Note that this buffer, along with the buffer below, are not in order compared
@@ -134,30 +135,36 @@ template <> struct InsertShorterDistanceAVX<L2Distance> {
 
         float current_best_distance = distances.top().first;
 
+        PositionAndIndex const *positions_ptr = positions.data();
+
         // main unrolled loop.
         for (; i < num_points + 1 - 8; i += 8) {
-            for (int j = 0; j < 4; ++j) {
-                v[j] = _mm256_loadu_si256(
-                    reinterpret_cast<const __m256i *>(positions.data() + i + 2 * j));
-            }
+            v0 = _mm256_loadu_si256(reinterpret_cast<const __m256i *>(positions_ptr + i));
+            v1 = _mm256_loadu_si256(reinterpret_cast<const __m256i *>(positions_ptr + i + 2));
+            v2 = _mm256_loadu_si256(reinterpret_cast<const __m256i *>(positions_ptr + i + 4));
+            v3 = _mm256_loadu_si256(reinterpret_cast<const __m256i *>(positions_ptr + i + 6));
+
+            // prefetch next loop
+            _mm_prefetch(reinterpret_cast<const char *>(positions_ptr + i + 8), _MM_HINT_NTA);
+            _mm_prefetch(reinterpret_cast<const char *>(positions_ptr + i + 12), _MM_HINT_NTA);
 
             // extract indices from packed data.
             // Note that indices are not extracted in the original order, but rather
             // in the following order: 0, 2, 4, 6, 1, 3, 5, 7.
-            // However, this also corresponds to the order in which the dot products in sum are computed,
-            // hence there is no further adjustment required.
+            // However, this also corresponds to the order in which the dot products in sum are
+            // computed, hence there is no further adjustment required.
             _mm256_storeu_si256(
-                reinterpret_cast<__m256i*>(indices_buffer),
+                reinterpret_cast<__m256i *>(indices_buffer),
                 _mm256_unpackhi_epi32(
-                    _mm256_unpackhi_epi32(v[0], v[2]), _mm256_unpackhi_epi32(v[1], v[3])));
+                    _mm256_unpackhi_epi32(v0, v2), _mm256_unpackhi_epi32(v1, v3)));
 
             // Accumulate squared distance for each position.
             // By using the dot product instruction with careful selection of the output
             // we can accumulate the distances in each segment of the vector register.
-            sum = dot_product<0>(_mm256_castsi256_ps(v[0]), q);
-            sum = _mm256_add_ps(sum, dot_product<1>(_mm256_castsi256_ps(v[1]), q));
-            sum = _mm256_add_ps(sum, dot_product<2>(_mm256_castsi256_ps(v[2]), q));
-            sum = _mm256_add_ps(sum, dot_product<3>(_mm256_castsi256_ps(v[3]), q));
+            sum = dot_product<0>(_mm256_castsi256_ps(v0), q);
+            sum = _mm256_add_ps(sum, dot_product<1>(_mm256_castsi256_ps(v1), q));
+            sum = _mm256_add_ps(sum, dot_product<2>(_mm256_castsi256_ps(v2), q));
+            sum = _mm256_add_ps(sum, dot_product<3>(_mm256_castsi256_ps(v3), q));
 
             // Evaluate whether we need to update the best distance.
             __m256 cmp =

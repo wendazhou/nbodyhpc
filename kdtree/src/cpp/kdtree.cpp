@@ -164,7 +164,7 @@ template <typename Distance = L2Distance> struct KDTreeQuery {
         uint32_t const num_points = node.right_ - node.left_;
         auto node_positions = positions_.subspan(node.left_, num_points);
 
-        InsertShorterDistanceUnrolled<Distance, 4> insert_shorter_distance;
+        InsertShorterDistanceAVX<Distance> insert_shorter_distance;
         insert_shorter_distance(node_positions, query_, distances_, distance_);
 
         num_points_visited += node_positions.size();
