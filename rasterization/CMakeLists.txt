@@ -85,7 +85,7 @@ add_library(rasterizer STATIC src/cpp/vulkan_support.cpp src/cpp/point_renderer.
 target_link_libraries(rasterizer PUBLIC Vulkan::Vulkan)
 target_link_libraries(rasterizer PRIVATE ${CMAKE_DL_LIBS} Threads::Threads)
 target_include_directories(rasterizer PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_include_directories(rasterizer PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/misc)
+target_include_directories(rasterizer PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/third_party/misc)
 set_property(TARGET rasterizer PROPERTY POSITION_INDEPENDENT_CODE ON)
 
 add_executable(rasterizer_main src/cpp/main.cpp  src/cpp/lodepng.cpp)
