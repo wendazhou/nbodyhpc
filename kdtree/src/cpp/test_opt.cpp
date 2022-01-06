@@ -17,20 +17,18 @@ using namespace wenda::kdtree;
 namespace {
 
 
-template<typename Inserter, typename DistanceT>
+template<template<typename, typename> typename Inserter, typename DistanceT, typename QueueT>
 std::vector<std::pair<float, uint32_t>> find_nearest_inserter(std::vector<std::array<float, 3>> const& positions, std::array<float, 3> const& query, int k, DistanceT const& distance) {
     std::vector<wenda::kdtree::PositionAndIndex> position_and_indices = wenda::kdtree::make_position_and_indices(positions);
 
-    typename Inserter::queue_t queue;
-    for(int i = 0; i < k; ++i) {
-        queue.push({std::numeric_limits<float>::max(), -1});
-    }
+    QueueT queue(k, {std::numeric_limits<float>::max(), -1});
 
-    Inserter inserter;
+    Inserter<DistanceT, QueueT> inserter;
 
     inserter(position_and_indices, query, queue, distance);
 
-    auto result = wenda::kdtree::get_container_from_adapter(queue);
+    std::vector<std::pair<float, uint32_t>> result(k);
+    queue.copy_values(result.begin());
     std::sort(result.begin(), result.end());
     return result;
 }
@@ -54,14 +52,29 @@ std::vector<std::array<T, R>> fill_random_positions(int n, unsigned int seed, fl
 
 }
 
+typedef PriorityQueue<std::pair<float, uint32_t>, PairLessFirst> PairPriorityQueue;
+typedef TournamentTree<std::pair<float, uint32_t>, PairLessFirst> PairTournamentTree;
+
 
 TEST(OptInsertionTest, UnrolledInsertion) {
     auto positions = fill_random_positions<float, 3>(128, 42);
     auto queries = fill_random_positions<float, 3>(4, 43);
 
     for (auto const& query : queries) {
-        auto result_vanilla = find_nearest_inserter<InsertShorterDistanceVanilla<L2Distance>>(positions, query, 8, L2Distance());
-        auto result_unrolled = find_nearest_inserter<InsertShorterDistanceUnrolled<L2Distance, 4>>(positions, query, 8, L2Distance());
+        auto result_vanilla = find_nearest_inserter<InsertShorterDistanceVanilla, L2Distance, PairPriorityQueue>(positions, query, 8, L2Distance());
+        auto result_unrolled = find_nearest_inserter<InsertShorterDistanceUnrolled, L2Distance, PairPriorityQueue>(positions, query, 8, L2Distance());
+
+        ASSERT_EQ(result_vanilla, result_unrolled);
+    }
+}
+
+TEST(OptInsertionTest, UnrolledInsertionTournamentTree) {
+    auto positions = fill_random_positions<float, 3>(128, 42);
+    auto queries = fill_random_positions<float, 3>(4, 43);
+
+    for (auto const& query : queries) {
+        auto result_vanilla = find_nearest_inserter<InsertShorterDistanceVanilla, L2Distance, PairPriorityQueue>(positions, query, 8, L2Distance());
+        auto result_unrolled = find_nearest_inserter<InsertShorterDistanceUnrolled, L2Distance, PairTournamentTree>(positions, query, 8, L2Distance());
 
         ASSERT_EQ(result_vanilla, result_unrolled);
     }
@@ -72,8 +85,20 @@ TEST(OptInsertionTest, Avx2Insertion) {
     auto queries = fill_random_positions<float, 3>(4, 43);
 
     for (auto const& query : queries) {
-        auto result_vanilla = find_nearest_inserter<InsertShorterDistanceVanilla<L2Distance>>(positions, query, 8, L2Distance());
-        auto result_avx = find_nearest_inserter<InsertShorterDistanceAVX<L2Distance>>(positions, query, 8, L2Distance());
+        auto result_vanilla = find_nearest_inserter<InsertShorterDistanceVanilla, L2Distance, PairPriorityQueue>(positions, query, 8, L2Distance());
+        auto result_avx = find_nearest_inserter<InsertShorterDistanceAVX, L2Distance, PairPriorityQueue>(positions, query, 8, L2Distance());
+
+        ASSERT_EQ(result_vanilla, result_avx);
+    }
+}
+
+TEST(OptInsertionTest, Avx2InsertionTournamentTree) {
+    auto positions = fill_random_positions<float, 3>(128, 42);
+    auto queries = fill_random_positions<float, 3>(4, 43);
+
+    for (auto const& query : queries) {
+        auto result_vanilla = find_nearest_inserter<InsertShorterDistanceVanilla, L2Distance, PairPriorityQueue>(positions, query, 8, L2Distance());
+        auto result_avx = find_nearest_inserter<InsertShorterDistanceAVX, L2Distance, PairTournamentTree>(positions, query, 8, L2Distance());
 
         ASSERT_EQ(result_vanilla, result_avx);
     }

@@ -24,13 +24,12 @@ template <int i> __m256 dot_product(__m256 v, __m256 q) {
     return _mm256_dp_ps(delta, delta, 0b01110000 + (1 << i));
 }
 
-template <typename DistanceT> struct InsertShorterDistanceVanilla {
+template <typename DistanceT, typename QueueT> struct InsertShorterDistanceVanilla {
     typedef std::pair<float, uint32_t> result_t;
-    typedef std::priority_queue<result_t, std::vector<result_t>, PairLessFirst> queue_t;
 
     void operator()(
         tcb::span<const PositionAndIndex> const &positions, std::array<float, 3> const &query,
-        queue_t &distances, DistanceT const &distance_func) {
+        QueueT &distances, DistanceT const &distance_func) {
 
         uint32_t num_points = static_cast<uint32_t>(positions.size());
         float current_best_distance = distances.top().first;
@@ -42,8 +41,7 @@ template <typename DistanceT> struct InsertShorterDistanceVanilla {
                 continue;
             }
 
-            distances.pop();
-            distances.push({dist, positions[i].index});
+            distances.replace_top({dist, positions[i].index});
             current_best_distance = distances.top().first;
         }
     }
@@ -52,13 +50,12 @@ template <typename DistanceT> struct InsertShorterDistanceVanilla {
 //! Template for unrolled shorter distance insertion.
 //! This implementation partially unrolls the inner loop, to give
 //! the optimizer a better chance to vectorize it.
-template <typename DistanceT, int Unroll> struct InsertShorterDistanceUnrolled {
+template <typename DistanceT, typename QueueT, int Unroll=4> struct InsertShorterDistanceUnrolled {
     typedef std::pair<float, uint32_t> result_t;
-    typedef std::priority_queue<result_t, std::vector<result_t>, PairLessFirst> queue_t;
 
     void operator()(
         tcb::span<const PositionAndIndex> positions, std::array<float, 3> const &query,
-        queue_t &distances, DistanceT const &distance) const {
+        QueueT &distances, DistanceT const &distance) const {
         uint32_t num_points = static_cast<uint32_t>(positions.size());
 
         uint32_t i = 0;
@@ -79,8 +76,7 @@ template <typename DistanceT, int Unroll> struct InsertShorterDistanceUnrolled {
                     continue;
                 }
 
-                distances.pop();
-                distances.push({distances_buffer[j], indices_buffer[j]});
+                distances.replace_top({distances_buffer[j], indices_buffer[j]});
                 current_best_distance = distances.top().first;
             }
         }
@@ -93,24 +89,22 @@ template <typename DistanceT, int Unroll> struct InsertShorterDistanceUnrolled {
                     continue;
                 }
 
-                distances.pop();
-                distances.push({dist, positions[i].index});
+                distances.replace_top({dist, positions[i].index});
                 current_best_distance = distances.top().first;
             }
         }
     }
 };
 
-template <typename DistanceT>
-struct InsertShorterDistanceAVX : InsertShorterDistanceUnrolled<DistanceT, 4> {};
+template <typename DistanceT, typename QueueT>
+struct InsertShorterDistanceAVX : InsertShorterDistanceUnrolled<DistanceT, QueueT, 4> {};
 
-template <> struct InsertShorterDistanceAVX<L2Distance> {
+template <typename QueueT> struct InsertShorterDistanceAVX<L2Distance, QueueT> {
     typedef std::pair<float, uint32_t> result_t;
-    typedef std::priority_queue<result_t, std::vector<result_t>, PairLessFirst> queue_t;
 
     void operator()(
         tcb::span<const PositionAndIndex> positions, std::array<float, 3> const &query,
-        queue_t &distances, L2Distance const &distance_func) const {
+        QueueT &distances, L2Distance const &distance_func) const {
 
         // Load in the query vector, duplicated across the upper and lower lanes.
         __m128 q_half =
@@ -186,8 +180,7 @@ template <> struct InsertShorterDistanceAVX<L2Distance> {
                     continue;
                 }
 
-                distances.pop();
-                distances.push({distances_buffer[j], indices_buffer[j]});
+                distances.replace_top({distances_buffer[j], indices_buffer[j]});
                 current_best_distance = distances.top().first;
             }
         }
@@ -201,8 +194,7 @@ template <> struct InsertShorterDistanceAVX<L2Distance> {
                 continue;
             }
 
-            distances.pop();
-            distances.push({distance, positions[i].index});
+            distances.replace_top({distance, positions[i].index});
             current_best_distance = distances.top().first;
         }
     }

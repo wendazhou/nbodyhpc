@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <queue>
 #include <utility>
 #include <vector>
 
@@ -12,7 +13,7 @@ namespace wenda {
 namespace kdtree {
 
 namespace detail {
-std::vector<uint32_t> build_loser_tree_initial(uint32_t n) {
+inline std::vector<uint32_t> build_loser_tree_initial(uint32_t n) {
     std::vector<std::pair<uint32_t, uint32_t>> winner_losers(2 * n);
 
     for (uint32_t i = 0; i < n; ++i) {
@@ -62,7 +63,7 @@ template <typename T, typename Cmp = std::less<T>> class TournamentTree {
 
   public:
     /** Constructs a tournament tree with the given capacity and value.
-     * 
+     *
      */
     TournamentTree(uint32_t n, T const &val) : data_(2 * n) {
         std::vector<uint32_t> losers = detail::build_loser_tree_initial(n);
@@ -73,26 +74,43 @@ template <typename T, typename Cmp = std::less<T>> class TournamentTree {
         data_[0] = value_t{val, 2 * n - 1};
     }
 
-    TournamentTree(TournamentTree const&) = default;
+    TournamentTree(TournamentTree const &) = default;
     TournamentTree(TournamentTree &&) = default;
 
     //! Peek at the top element of the tree.
     T const &top() const { return data_[0].first; }
 
     //! Replace the top element of the tree with the given value.
-    T replace_top(T const &val) {
+    void replace_top(T const &val) {
         std::pair<T, uint32_t> value{val, data_[0].second};
         std::swap(data_[data_[0].second], value);
 
         update_root_from_index(data_[0].second);
-
-        return value.first;
     }
 
     template <typename OutIt> void copy_values(OutIt it) const {
         std::transform(data_.begin() + data_.size() / 2, data_.end(), it, [](value_t const &v) {
             return v.first;
         });
+    }
+};
+
+/** An adapter for std::priority_queue which has the same interface as TournamentTree
+ *
+ */
+template <typename T, typename Cmp = std::less<T>>
+class PriorityQueue : public std::priority_queue<T, std::vector<T>, Cmp> {
+  public:
+    PriorityQueue(uint32_t n, T const &val)
+        : std::priority_queue<T, std::vector<T>, Cmp>(Cmp{}, std::vector<T>(n, val)) {}
+
+    void replace_top(T const &val) {
+        this->pop();
+        this->push(val);
+    }
+
+    template <typename OutIt> void copy_values(OutIt it) const {
+        std::copy(this->c.begin(), this->c.end(), it);
     }
 };
 
