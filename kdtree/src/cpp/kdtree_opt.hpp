@@ -96,6 +96,12 @@ template <typename DistanceT, typename QueueT, int Unroll=4> struct InsertShorte
     }
 };
 
+template<typename DistanceT, typename QueueT>
+using InsertShorterDistanceUnrolled4 = InsertShorterDistanceUnrolled<DistanceT, QueueT, 4>;
+
+template<typename DistanceT, typename QueueT>
+using InsertShorterDistanceUnrolled8 = InsertShorterDistanceUnrolled<DistanceT, QueueT, 8>;
+
 template <typename DistanceT, typename QueueT>
 struct InsertShorterDistanceAVX : InsertShorterDistanceUnrolled<DistanceT, QueueT, 4> {};
 

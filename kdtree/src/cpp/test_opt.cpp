@@ -62,7 +62,7 @@ TEST(OptInsertionTest, UnrolledInsertion) {
 
     for (auto const& query : queries) {
         auto result_vanilla = find_nearest_inserter<InsertShorterDistanceVanilla, L2Distance, PairPriorityQueue>(positions, query, 8, L2Distance());
-        auto result_unrolled = find_nearest_inserter<InsertShorterDistanceUnrolled, L2Distance, PairPriorityQueue>(positions, query, 8, L2Distance());
+        auto result_unrolled = find_nearest_inserter<InsertShorterDistanceUnrolled4, L2Distance, PairPriorityQueue>(positions, query, 8, L2Distance());
 
         ASSERT_EQ(result_vanilla, result_unrolled);
     }
@@ -74,7 +74,7 @@ TEST(OptInsertionTest, UnrolledInsertionTournamentTree) {
 
     for (auto const& query : queries) {
         auto result_vanilla = find_nearest_inserter<InsertShorterDistanceVanilla, L2Distance, PairPriorityQueue>(positions, query, 8, L2Distance());
-        auto result_unrolled = find_nearest_inserter<InsertShorterDistanceUnrolled, L2Distance, PairTournamentTree>(positions, query, 8, L2Distance());
+        auto result_unrolled = find_nearest_inserter<InsertShorterDistanceUnrolled4, L2Distance, PairTournamentTree>(positions, query, 8, L2Distance());
 
         ASSERT_EQ(result_vanilla, result_unrolled);
     }

@@ -257,7 +257,7 @@ std::vector<std::pair<float, uint32_t>> KDTree::find_closest(
 
     typedef std::pair<float, uint32_t> result_t;
 
-    KDTreeQuery<Distance, PriorityQueue<result_t, PairLessFirst>, InsertShorterDistanceVanilla> query(*this, distance, position, k);
+    KDTreeQuery<Distance, TournamentTree<result_t, PairLessFirst>, InsertShorterDistanceVanilla> query(*this, distance, position, k);
     query.compute(&nodes_[0], distance.initial_box(position));
 
     if (statistics) {
