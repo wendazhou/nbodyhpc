@@ -20,7 +20,7 @@ jobs:
       run: python -m cibuildwheel --output-dir wheelhouse
       working-directory: ./rasterization
       env:
-        CIBW_BEFORE_ALL: bash /project/scripts/install_vulkan_sdk.sh sdk-1.2.198
+        CIBW_BEFORE_ALL: yum install -y wayland-devel libXrandr-devel && bash /project/scripts/install_vulkan_sdk.sh sdk-1.2.198
         CIBW_BUILD: 'cp37-* cp38-* cp39-*'
         CIBW_MANYLINUX_X86_64_IMAGE: manylinux2014
         CIBW_SKIP: "*-musllinux_"
