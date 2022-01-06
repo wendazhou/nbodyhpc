@@ -19,7 +19,7 @@ jobs:
     - name: Install Vulkan SDK
       uses: humbletim/setup-vulkan-sdk@v1.0.3
       with:
-        vulkan-version: 1.2.161.1
+        vulkan-version: 1.2.198.1
     - name: Copy Vulkan SDK to rasterization subdirectory
       run: cp -r VULKAN_SDK ./rasterization/third_party/
     - name: Build nbodyhpc-rasterizer wheels
