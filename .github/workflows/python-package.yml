@@ -20,13 +20,12 @@ jobs:
       run: python -m cibuildwheel --output-dir wheelhouse
       working-directory: ./rasterization
       env:
-        CIBW_BEFORE_ALL: yum install -y vulkan-devel
+        CIBW_BEFORE_ALL: bash /project/scripts/install_vulkan_sdk.sh 1.2.198.1
         CIBW_BUILD: 'cp37-* cp38-* cp39-*'
         CIBW_MANYLINUX_X86_64_IMAGE: manylinux2014
         CIBW_SKIP: "*-musllinux_"
         CIBW_ARCHS_LINUX: x86_64
-        CIBW_ENV_PASS_LINUX: VULKAN_SDK
-        VULKAN_SDK: ./third_party/VULKAN_SDK
+        CIBW_ENVIRONMENT: VULKAN_SDK=/project/third_party/VULKAN_SDK
     - name: Build nbodyhpc-kdtree wheels
       run: python -m cibuildwheel --output-dir wheelhouse
       working-directory: ./kdtree
