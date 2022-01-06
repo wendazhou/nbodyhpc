@@ -16,15 +16,32 @@ jobs:
       uses: actions/setup-python@v2
     - name: Install cibuildwheel
       run: python -m pip install cibuildwheel==2.3.1
+    - name: Install Vulkan SDK
+      uses: humbletim/setup-vulkan-sdk@v1.0.3
+      with:
+        vulkan-version: 1.2.161.1
+      working-directory: ./rasterization
+    - name: Build nbodyhpc-rasterizer wheels
+      run: python -m cibuildwheel --output-dir wheelhouse
+      working-directory: ./rasterization
+      env:
+        CIBW_BUILD: 'cp37-* cp38-* cp39-*'
+        CIBW_MANYLINUX_X86_64_IMAGE: manylinux2014
+        CIBW_SKIP: "*-musllinux_"
+        CIBW_ARCHS_LINUX: x86_64
+        CIBW_ENV_PASS_LINUX: VULKAN_SDK VULKAN_SDK_VERSION
     - name: Build nbodyhpc-kdtree wheels
       run: python -m cibuildwheel --output-dir wheelhouse
       working-directory: ./kdtree
       env:
         CIBW_BUILD: 'cp37-* cp38-* cp39-*'
         CIBW_MANYLINUX_X86_64_IMAGE: manylinux2014
+        CIBW_SKIP: "*-musllinux_"
         CIBW_ARCHS_LINUX: x86_64
     - name: Upload Linux wheels
       uses: actions/upload-artifact@v2
       with:
         name: dist
-        path: ./kdtree/wheelhouse/*.whl
+        path: |
+          ./kdtree/wheelhouse/*.whl
+          ./rasterization/wheelhouse/*.whl
