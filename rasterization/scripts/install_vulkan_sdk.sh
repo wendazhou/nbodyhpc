@@ -34,14 +34,12 @@
 #   VULKAN_SDK=...
 #   VULKAN_SDK_VERSION=...
 
-test -d VULKAN_SDK || mkdir VULKAN_SDK || true
-
 set -e
 
 VK_VERSION=${1:-latest}
 
 os=unknown
-build_dir=/project/third_party/VULKAN_SDK
+build_dir=$(realpath ./third_party/VULKAN_SDK)
 case `uname -s` in
   Darwin) echo "TODO=Darwin" ;  exit 5 ;;
   Linux)
@@ -61,15 +59,16 @@ echo build_dir=$build_dir >&2
 
 # resolve latest into an actual SDK release number (currently only used for troubleshooting / debug output)
 echo "using specified branch/tag name as-is: $VK_VERSION" >&2
+BRANCH=$VK_VERSION
 
 MAKEFLAGS=-j2
 
-test -d $build_dir/_build || mkdir $build_dir/_build
+mkdir -p $build_dir/_build
 pushd $build_dir/_build >&2
 
   git clone --single-branch --depth=1 --branch="$BRANCH" https://github.com/KhronosGroup/Vulkan-Headers.git >&2
   pushd Vulkan-Headers >&2
-    cmake -DCMAKE_INSTALL_PREFIX=/project/third_party/VULKAN_SDK -DCMAKE_BUILD_TYPE=Release . >&2
+    cmake -DCMAKE_INSTALL_PREFIX=$build_dir -DCMAKE_BUILD_TYPE=Release . >&2
     cmake --build . --config Release >&2
     cmake --install . >&2
   popd >&2
@@ -86,8 +85,7 @@ echo "" >&2
 
 # export these so that "sourcing" this file directly also works
 export VULKAN_SDK_VERSION=$BRANCH
-
-export VULKAN_SDK=$build_dir/VULKAN_SDK
+export VULKAN_SDK=$build_dir
 
 # also print to STDOUT for eval'ing or appending to $GITHUB_ENV:
 echo VULKAN_SDK_VERSION=$VULKAN_SDK_VERSION
