@@ -20,7 +20,8 @@ jobs:
       uses: humbletim/setup-vulkan-sdk@v1.0.3
       with:
         vulkan-version: 1.2.161.1
-      working-directory: ./rasterization
+    - name: Copy Vulkan SDK to rasterization subdirectory
+      run: cp -r VULKAN_SDK ./rasterization/third_party/
     - name: Build nbodyhpc-rasterizer wheels
       run: python -m cibuildwheel --output-dir wheelhouse
       working-directory: ./rasterization
@@ -29,7 +30,8 @@ jobs:
         CIBW_MANYLINUX_X86_64_IMAGE: manylinux2014
         CIBW_SKIP: "*-musllinux_"
         CIBW_ARCHS_LINUX: x86_64
-        CIBW_ENV_PASS_LINUX: VULKAN_SDK VULKAN_SDK_VERSION
+        CIBW_ENV_PASS_LINUX: VULKAN_SDK
+        VULKAN_SDK: ./third_party/VULKAN_SDK
     - name: Build nbodyhpc-kdtree wheels
       run: python -m cibuildwheel --output-dir wheelhouse
       working-directory: ./kdtree
