@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.15)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_VISIBILITY_PRESET hidden)
 
-project(kdtree VERSION 0.1 LANGUAGES CXX)
+project(kdtree VERSION 0.1 LANGUAGES CXX ASM)
 
 include(CTest)
 
@@ -47,7 +47,7 @@ else()
 endif()
 
 
-add_library(kdtree STATIC src/cpp/kdtree.cpp)
+add_library(kdtree STATIC src/cpp/kdtree.cpp src/cpp/kdtree_asm.S)
 target_link_libraries(kdtree PRIVATE Threads::Threads)
 target_compile_options(kdtree PUBLIC $<$<CONFIG:DEBUG>:-fsanitize=address>)
 target_link_options(kdtree PUBLIC $<$<CONFIG:DEBUG>:-fsanitize=address>)
@@ -70,7 +70,7 @@ pybind11_add_module(_impl src/cpp/pybind.cpp)
 target_link_libraries(_impl PRIVATE kdtree)
 
 if(BUILD_TESTING)
-    add_executable(kdtree_test src/cpp/test.cpp src/cpp/test_opt.cpp)
+    add_executable(kdtree_test src/cpp/test.cpp src/cpp/test_opt.cpp src/cpp/test_asm.cpp)
     target_link_libraries(kdtree_test PRIVATE kdtree gtest_main)
 
     include(GoogleTest)

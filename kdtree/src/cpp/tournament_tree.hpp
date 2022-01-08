@@ -38,7 +38,7 @@ inline std::vector<uint32_t> build_loser_tree_initial(uint32_t n) {
  *
  */
 template <typename T, typename Cmp = std::less<T>> class TournamentTree {
-  private:
+  protected:
     typedef std::pair<T, uint32_t> value_t;
 
     std::vector<value_t> data_;
