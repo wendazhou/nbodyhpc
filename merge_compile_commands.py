@@ -15,7 +15,7 @@ def main():
     result = []
 
     for directory in DIRECTORIES:
-        compile_commands_path = os.path.join(directory, 'build', 'compile_commands.json')
+        compile_commands_path = os.path.join(directory, 'build_cmake', 'compile_commands.json')
         if os.path.exists(compile_commands_path):
             result.extend(json.load(open(compile_commands_path)))
 

@@ -16,6 +16,14 @@ if(BUILD_TESTING)
 
     set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
     FetchContent_MakeAvailable(googletest)
+
+    set(BENCHMARK_ENABLE_TESTING OFF)
+    set(BENCHMARK_ENABLE_INSTALL OFF)
+    FetchContent_Declare(
+        googlebenchmark
+        URL https://github.com/google/benchmark/archive/v1.6.0.zip
+    )
+    FetchContent_MakeAvailable(googlebenchmark)
 endif()
 
 
@@ -67,5 +75,9 @@ if(BUILD_TESTING)
 
     include(GoogleTest)
     gtest_discover_tests(kdtree_test)
+
+    add_executable(kdtree_insertion_benchmark src/cpp/benchmark_insertion.cpp)
+    target_link_libraries(kdtree_insertion_benchmark PRIVATE kdtree benchmark::benchmark_main)
+    target_include_directories(kdtree_insertion_benchmark PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/third_party/random123/include)
 endif()
 

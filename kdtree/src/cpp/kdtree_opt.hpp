@@ -25,6 +25,8 @@ template <int i> __m256 dot_product(__m256 v, __m256 q) {
 }
 
 template <typename DistanceT, typename QueueT> struct InsertShorterDistanceVanilla {
+    typedef DistanceT distance_t;
+    typedef QueueT queue_t;
     typedef std::pair<float, uint32_t> result_t;
 
     void operator()(
@@ -51,6 +53,8 @@ template <typename DistanceT, typename QueueT> struct InsertShorterDistanceVanil
 //! This implementation partially unrolls the inner loop, to give
 //! the optimizer a better chance to vectorize it.
 template <typename DistanceT, typename QueueT, int Unroll=4> struct InsertShorterDistanceUnrolled {
+    typedef DistanceT distance_t;
+    typedef QueueT queue_t;
     typedef std::pair<float, uint32_t> result_t;
 
     void operator()(
@@ -106,6 +110,8 @@ template <typename DistanceT, typename QueueT>
 struct InsertShorterDistanceAVX : InsertShorterDistanceUnrolled<DistanceT, QueueT, 4> {};
 
 template <typename QueueT> struct InsertShorterDistanceAVX<L2Distance, QueueT> {
+    typedef L2Distance distance_t;
+    typedef QueueT queue_t;
     typedef std::pair<float, uint32_t> result_t;
 
     void operator()(
