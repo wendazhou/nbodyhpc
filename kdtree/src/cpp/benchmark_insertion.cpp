@@ -1,4 +1,6 @@
 #include <array>
+#include <execution>
+#include <numeric>
 #include <vector>
 
 #include <benchmark/benchmark.h>
@@ -39,7 +41,7 @@ std::vector<kdt::PositionAndIndex> fill_random_positions_and_index(int n, unsign
 
 /** This template contains a policy which always operates on the same subset of positions,
  * making it possible for those to be held in fast cache.
- * 
+ *
  */
 template <typename Inserter> struct Cached {
     tcb::span<const kdt::PositionAndIndex> positions_;
@@ -63,7 +65,7 @@ template <typename Inserter> struct Cached {
 /** This template contains a policy which operates on contiguous positions throughout the array,
  * predictably advancing through the positions array. This represents a scenario which is
  * favourable to the prefetcher, but still requires memory bandwidth.
- * 
+ *
  */
 template <typename Inserter> struct Contiguous {
     tcb::span<const kdt::PositionAndIndex> positions_;
@@ -90,7 +92,7 @@ template <typename Inserter> struct Contiguous {
  * preventing large-scale prefetching of the data. However, it still operates contiguously
  * on blocks of size `query_size`, which makes it somewhat more optimistic than the real-world
  * use.
- * 
+ *
  */
 template <typename Inserter> struct RandomBlock {
     typedef r123::Philox4x32 RNG;
@@ -130,6 +132,9 @@ template <
 using InserterL2 = Inserter<
     wenda::kdtree::L2Distance, Queue<std::pair<float, uint32_t>, wenda::kdtree::PairLessFirst>>;
 
+/** Benchmark the given brute-force insertion method, using the given queue type.
+ *
+ */
 template <
     template <typename, typename> typename InserterT, template <typename, typename> typename QueueT,
     template <typename> typename Loop>
@@ -166,13 +171,50 @@ void Memcpy(benchmark::State &state) {
 
     std::vector<kdt::PositionAndIndex> positions_copy(query_size);
 
-    uint32_t idx = 0;
+    size_t idx = 0;
 
     for (auto _ : state) {
-        benchmark::ClobberMemory();
-        std::copy(positions_span.begin(), positions_span.begin() + query_size,
+        std::copy(
+            positions_span.begin() + idx * query_size,
+            positions_span.begin() + idx * query_size + query_size,
             positions_copy.begin());
+        benchmark::DoNotOptimize(positions_copy.data());
         benchmark::ClobberMemory();
+        idx = (idx + 1) % (num_points / query_size);
+    }
+
+    state.SetBytesProcessed(state.iterations() * query_size * sizeof(kdt::PositionAndIndex));
+}
+
+void ReduceDistance(benchmark::State &state) {
+    size_t num_points = state.range(0);
+    size_t query_size = state.range(1);
+
+    auto positions = fill_random_positions_and_index(num_points, 42);
+    auto positions_span = tcb::make_span(positions);
+
+    std::array<float, 3> query = {0.5, 0.5, 0.5};
+    kdt::L2Distance distance;
+
+    size_t idx = 0;
+
+    for (auto _ : state) {
+        auto subspan = positions_span.subspan(idx * query_size, query_size);
+
+        float result = std::transform_reduce(
+#if __cpp_lib_execution >= 201902
+            std::execution::unseq,
+#else
+            std::execution::seq,
+#endif
+            subspan.begin(),
+            subspan.end(),
+            std::numeric_limits<float>::max(),
+            [](float a, float b) { return std::min(a, b); },
+            [&](kdt::PositionAndIndex const &p) { return distance(p.position, query); });
+        benchmark::DoNotOptimize(result);
+
+        idx = (idx + 1) % (num_points / query_size);
     }
 
     state.SetBytesProcessed(state.iterations() * query_size * sizeof(kdt::PositionAndIndex));
@@ -180,10 +222,13 @@ void Memcpy(benchmark::State &state) {
 
 } // namespace
 
-#define DEFINE_BENCHMARKS_ALL_INSERTERS(Queue, Loop) \
-    BENCHMARK_TEMPLATE(Insertion, kdt::InsertShorterDistanceVanilla, Queue, Loop)->Args({1000000, 1024}); \
-    BENCHMARK_TEMPLATE(Insertion, kdt::InsertShorterDistanceUnrolled4, Queue, Loop)->Args({1000000, 1024}); \
-    BENCHMARK_TEMPLATE(Insertion, kdt::InsertShorterDistanceAVX, Queue, Loop)->Args({1000000, 1024});
+#define DEFINE_BENCHMARKS_ALL_INSERTERS(Queue, Loop)                                               \
+    BENCHMARK_TEMPLATE(Insertion, kdt::InsertShorterDistanceVanilla, Queue, Loop)                  \
+        ->Args({1000000, 1024});                                                                   \
+    BENCHMARK_TEMPLATE(Insertion, kdt::InsertShorterDistanceUnrolled4, Queue, Loop)                \
+        ->Args({1000000, 1024});                                                                   \
+    BENCHMARK_TEMPLATE(Insertion, kdt::InsertShorterDistanceAVX, Queue, Loop)                      \
+        ->Args({1000000, 1024});
 
 DEFINE_BENCHMARKS_ALL_INSERTERS(kdt::TournamentTree, RandomBlock)
 DEFINE_BENCHMARKS_ALL_INSERTERS(kdt::TournamentTree, Contiguous)
@@ -191,4 +236,5 @@ DEFINE_BENCHMARKS_ALL_INSERTERS(kdt::TournamentTree, Cached)
 
 #undef DEFINE_BENCHMARKS_ALL_INSERTERS
 
+BENCHMARK(ReduceDistance)->Args({1000000, 1024});
 BENCHMARK(Memcpy)->Args({1000000, 1024});
