@@ -78,50 +78,73 @@ INSTANTIATE_TEST_SUITE_P(
 
 TEST(InserterAsm, InsertFindClosest) {
     wenda::kdtree::L2Distance distance;
-    auto positions = wenda::kdtree::make_random_position_and_index(128, 42);
-    std::array<float, 3> query = {0.5f, 0.5f, 0.5f};
 
-    auto closest_idx_asm =
-        wenda_find_closest_l2_avx2(positions.data(), positions.size(), query.data());
+    for (int seed : {42, 43, 44, 45}) {
+        auto positions = wenda::kdtree::make_random_position_and_index(128, seed);
+        std::array<float, 3> query = {0.5f, 0.5f, 0.5f};
 
-    auto result = std::transform_reduce(
-        positions.begin(), positions.end(),
-        std::pair<float, uint32_t>{std::numeric_limits<float>::max(), -1},
-        [](auto const& p1, auto const& p2) {
-            return p1.first < p2.first ? p1 : p2;
-        },
-        [&](wenda::kdtree::PositionAndIndex const& p) {
-            return std::make_pair(distance(p.position, query), p.index);
-        });
+        auto closest_idx_asm =
+            wenda_find_closest_l2_avx2(positions.data(), positions.size(), query.data());
 
-    ASSERT_EQ(result.second, closest_idx_asm);
+        auto result = std::transform_reduce(
+            positions.begin(),
+            positions.end(),
+            std::pair<float, uint32_t>{std::numeric_limits<float>::max(), -1},
+            [](auto const &p1, auto const &p2) { return p1.first < p2.first ? p1 : p2; },
+            [&](wenda::kdtree::PositionAndIndex const &p) {
+                return std::make_pair(distance(p.position, query), p.index);
+            });
+        ASSERT_EQ(result.second, closest_idx_asm);
+    }
+}
+
+TEST(InserterAsm, InsertFindClosestTail) {
+    wenda::kdtree::L2Distance distance;
+
+    for (int seed : {42, 43, 44, 45}) {
+        auto positions = wenda::kdtree::make_random_position_and_index(16 + (seed % 8), seed);
+        std::array<float, 3> query = {0.5f, 0.5f, 0.5f};
+
+        auto closest_idx_asm =
+            wenda_find_closest_l2_avx2(positions.data(), positions.size(), query.data());
+
+        auto result = std::transform_reduce(
+            positions.begin(),
+            positions.end(),
+            std::pair<float, uint32_t>{std::numeric_limits<float>::max(), -1},
+            [](auto const &p1, auto const &p2) { return p1.first < p2.first ? p1 : p2; },
+            [&](wenda::kdtree::PositionAndIndex const &p) {
+                return std::make_pair(distance(p.position, query), p.index);
+            });
+        ASSERT_EQ(result.second, closest_idx_asm);
+    }
 }
 
 TEST(InserterAsm, InsertFindClosestMultiple) {
     wenda::kdtree::L2Distance distance;
-    auto positions = wenda::kdtree::make_random_position_and_index(256, 42);
-    std::array<float, 3> query = {0.5f, 0.5f, 0.5f};
 
-    auto closest_idx_asm_1 =
-        wenda_find_closest_l2_avx2(positions.data(), 128, query.data());
+    for (int seed : {42, 43, 44, 45}) {
+        auto positions = wenda::kdtree::make_random_position_and_index(256, seed);
+        std::array<float, 3> query = {0.5f, 0.5f, 0.5f};
 
-    auto closest_idx_asm_2 =
-        wenda_find_closest_l2_avx2(positions.data() + 128, 128, query.data());
+        auto closest_idx_asm_1 = wenda_find_closest_l2_avx2(positions.data(), 128, query.data());
 
-    auto result = std::transform_reduce(
-        positions.begin(), positions.end(),
-        std::pair<float, uint32_t>{std::numeric_limits<float>::max(), -1},
-        [](auto const& p1, auto const& p2) {
-            return p1.first < p2.first ? p1 : p2;
-        },
-        [&](wenda::kdtree::PositionAndIndex const& p) {
-            return std::make_pair(distance(p.position, query), p.index);
-        });
+        auto closest_idx_asm_2 =
+            wenda_find_closest_l2_avx2(positions.data() + 128, 128, query.data());
 
-    if (result.second < 128) {
-        ASSERT_EQ(result.second, closest_idx_asm_1);
-    }
-    else {
-        ASSERT_EQ(result.second - 128, closest_idx_asm_2);
+        auto result = std::transform_reduce(
+            positions.begin(),
+            positions.end(),
+            std::pair<float, uint32_t>{std::numeric_limits<float>::max(), -1},
+            [](auto const &p1, auto const &p2) { return p1.first < p2.first ? p1 : p2; },
+            [&](wenda::kdtree::PositionAndIndex const &p) {
+                return std::make_pair(distance(p.position, query), p.index);
+            });
+
+        if (result.second < 128) {
+            ASSERT_EQ(result.second, closest_idx_asm_1);
+        } else {
+            ASSERT_EQ(result.second, closest_idx_asm_2);
+        }
     }
 }

@@ -67,6 +67,7 @@ set_property(TARGET kdtree PROPERTY POSITION_INDEPENDENT_CODE ON)
 
 if(MSVC)
     target_compile_options(kdtree PRIVATE $<$<COMPILE_LANGUAGE:C,CXX>:/arch:AVX2>)
+    target_compile_options(kdtree PRIVATE $<$<COMPILE_LANGUAGE:ASM_MASM>:/Zd>)
 else()
     target_compile_options(kdtree PUBLIC -mavx2 -mtune=haswell)
 endif()

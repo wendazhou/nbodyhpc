@@ -66,7 +66,7 @@ wenda_find_closest_l2_avx2:
     vbroadcastss ymm10, DWORD PTR [flt_max]
 
     lea rsi, [rsi  * 8]
-    lea rsi, [rdi + rsi * 2]
+    lea rsi, [rdi + rsi * 2 - 7 * 16]
 
 .loop_start:
     vmovups ymm3, YMMWORD PTR [rdi]
@@ -123,6 +123,30 @@ wenda_find_closest_l2_avx2:
     jb .loop_start
 
     mov eax, r11d
+
+# Adjust end pointer to non-truncated value
+    add rsi, 7 * 16
+# Test for tail loop
+    cmp rdi, rsi
+    je .done
+
+# Tail loop
+    vmovaps xmm5, xmm10
+.tail_start:
+    vmovups xmm3, XMMWORD PTR [rdi]
+    vsubps xmm3, xmm3, xmm2
+    vdpps xmm3, xmm3, xmm3, 0b01110001
+    ucomiss xmm3, xmm5
+    jae .tail_end
+
+    vbroadcastss xmm5, xmm3
+    mov eax, DWORD PTR[rdi + 12]
+.tail_end
+    add rdi, 16
+    cmp rdi, rsi
+    jb .tail_start
+
+.done:
     add rsp, 64
     ret
 

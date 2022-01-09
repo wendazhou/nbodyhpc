@@ -91,6 +91,7 @@ load_and_compute_l2 MACRO query_reg
 ENDM
 
 
+; Find index of element closest to given query in array
 wenda_find_closest_l2_avx2 PROC PUBLIC FRAME
     ; Stack-based variables
     push rbp
@@ -118,7 +119,7 @@ wenda_find_closest_l2_avx2 PROC PUBLIC FRAME
 
     ; Load end pointer into rdx
     lea rdx, [rdx * 8]
-    lea rdx, [rcx + rdx * 2]
+    lea rdx, [rcx + rdx * 2 - 7 * 16]
 
 loop_start:
     load_and_compute_l2 ymm2
@@ -153,8 +154,32 @@ loop_end:
     cmp rcx, rdx
     jb loop_start
 
+; Store best result so far into eax
     mov eax, r11d
 
+; Adjust end pointer to non-truncated value
+    add rdx, 7 * 16
+; Test for tail loop
+    cmp rcx, rdx
+    je done
+
+; Tail loop (remainder)
+    vmovaps xmm5, xmm10
+tail_start:
+    vmovups xmm3, XMMWORD PTR [rcx]
+    vsubps xmm3, xmm3, xmm2
+    vdpps xmm3, xmm3, xmm3, 01110001b
+    ucomiss xmm3, xmm5
+    jae tail_end
+
+    vbroadcastss xmm5, xmm3
+    mov eax, DWORD PTR[rcx + 12]
+tail_end:
+    add rcx, 16
+    cmp rcx, rdx
+    jb tail_start
+
+done:
 ; Epilog
     vmovaps xmm6, [rbp + 64 + 16]
     vmovaps xmm7, [rbp + 64]
