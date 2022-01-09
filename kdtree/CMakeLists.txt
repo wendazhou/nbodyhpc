@@ -3,7 +3,13 @@ cmake_minimum_required(VERSION 3.15)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_VISIBILITY_PRESET hidden)
 
-project(kdtree VERSION 0.1 LANGUAGES CXX ASM)
+project(kdtree VERSION 0.1 LANGUAGES CXX)
+
+if(WIN32)
+enable_language(ASM_MASM)
+else()
+enable_language(ASM)
+endif()
 
 include(CTest)
 
@@ -46,8 +52,13 @@ else()
     add_subdirectory(../third_party/pybind11 ${CMAKE_CURRENT_BINARY_DIR}/third_party/pybind11)
 endif()
 
+if(WIN32)
+set(KDTREE_ASM_SOURCES src/cpp/kdtree_asm_windows.asm)
+else()
+set(KDTREE_ASM_SOURCES src/cpp/kdtree_asm_systemv.S)
+endif()
 
-add_library(kdtree STATIC src/cpp/kdtree.cpp src/cpp/kdtree_asm.S)
+add_library(kdtree STATIC src/cpp/kdtree.cpp ${KDTREE_ASM_SOURCES})
 target_link_libraries(kdtree PRIVATE Threads::Threads)
 target_compile_options(kdtree PUBLIC $<$<CONFIG:DEBUG>:-fsanitize=address>)
 target_link_options(kdtree PUBLIC $<$<CONFIG:DEBUG>:-fsanitize=address>)

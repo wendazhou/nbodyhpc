@@ -5,18 +5,8 @@
 #include "tournament_tree.hpp"
 
 extern "C" {
-void tournament_tree_update_root_systemv(
+void tournament_tree_update_root(
     void *tree, uint32_t idx, float element_value, uint32_t element_idx);
-void tournament_tree_update_root_msvc(
-    void *tree, uint32_t idx, float element_value, uint32_t element_idx);
-
-// conditionally define the right function based on the calling convention.
-#if defined(_WIN32)
-#define tournament_tree_update_root tournament_tree_update_root_msvc
-#else
-#define tournament_tree_update_root tournament_tree_update_root_systemv
-#endif
-
 }
 
 

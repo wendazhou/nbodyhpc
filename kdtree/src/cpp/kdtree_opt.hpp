@@ -145,7 +145,7 @@ template <typename QueueT> struct InsertShorterDistanceAVX<L2Distance, QueueT> {
 
         // main unrolled loop.
         for (; i < num_points - 7; i += 8) {
-            _mm_prefetch(positions_ptr + i + 8, _MM_HINT_NTA);
+            _mm_prefetch(reinterpret_cast<const char*>(positions_ptr + i + 8), _MM_HINT_NTA);
             v0 = _mm256_loadu_si256(reinterpret_cast<const __m256i *>(positions_ptr + i));
             v1 = _mm256_loadu_si256(reinterpret_cast<const __m256i *>(positions_ptr + i + 2));
             v2 = _mm256_loadu_si256(reinterpret_cast<const __m256i *>(positions_ptr + i + 4));
