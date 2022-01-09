@@ -9,9 +9,9 @@
 #   rsi: index at which element is placed
 #   xmm0: value of the inserted element
 #   edx: index of the inserted element
-.type tournament_tree_update_root_systemv, @function
-.global tournament_tree_update_root_systemv
-tournament_tree_update_root_systemv:
+.type tournament_tree_update_root, @function
+.global tournament_tree_update_root
+tournament_tree_update_root:
     cmp esi, 1
     jbe .finish
 
@@ -53,17 +53,4 @@ tournament_tree_update_root_systemv:
     movss DWORD PTR[rdi], xmm0
     mov DWORD PTR[rdi + 4], edx
     mov DWORD PTR[rdi + 8], ecx
-    ret
-
-.type tournament_tree_update_root_msvc, @function
-.global tournament_tree_update_root_msvc
-tournament_tree_update_root_msvc:
-    push rdi
-    push rsi
-    mov rdi, rcx
-    mov rsi, rdx
-    mov rdx, r8
-    call tournament_tree_update_root_systemv
-    pop rsi
-    pop rdi
     ret
