@@ -2,11 +2,15 @@
 
 #include <gtest/gtest.h>
 
+#include "kdtree.hpp"
 #include "tournament_tree.hpp"
 
 extern "C" {
 void tournament_tree_update_root(
     void *tree, uint32_t idx, float element_value, uint32_t element_idx);
+
+uint32_t insert_shorter_distance_avx2(void *positions, size_t n, float* const query);
+
 }
 
 
@@ -71,3 +75,7 @@ INSTANTIATE_TEST_SUITE_P(
         std::pair<int, int>{4, 1}, std::pair<int, int>{4, 2}, std::pair<int, int>{4, 4},
         std::pair<int, int>{4, 8}, std::pair<int, int>{13, 1}, std::pair<int, int>{13, 5},
         std::pair<int, int>{13, 27}));
+
+TEST(InserterAsm, InsertFindClosest) {
+    std::vector<wenda::kdtree::PositionAndIndex> positions(128);
+}

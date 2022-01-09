@@ -83,6 +83,7 @@ target_link_libraries(_impl PRIVATE kdtree)
 if(BUILD_TESTING)
     add_executable(kdtree_test src/cpp/test.cpp src/cpp/test_opt.cpp src/cpp/test_asm.cpp)
     target_link_libraries(kdtree_test PRIVATE kdtree gtest_main)
+    target_include_directories(kdtree_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/third_party/random123/include)
 
     include(GoogleTest)
     gtest_discover_tests(kdtree_test)

@@ -8,6 +8,7 @@
 
 #include "kdtree.hpp"
 #include "kdtree_opt.hpp"
+#include "kdtree_utils.h"
 #include "utils.hpp"
 #include "tournament_tree.hpp"
 
@@ -18,36 +19,17 @@ namespace {
 
 
 template<template<typename, typename> typename Inserter, typename DistanceT, typename QueueT>
-std::vector<std::pair<float, uint32_t>> find_nearest_inserter(std::vector<std::array<float, 3>> const& positions, std::array<float, 3> const& query, int k, DistanceT const& distance) {
-    std::vector<wenda::kdtree::PositionAndIndex> position_and_indices = wenda::kdtree::make_position_and_indices(positions);
-
+std::vector<std::pair<float, uint32_t>> find_nearest_inserter(tcb::span<const wenda::kdtree::PositionAndIndex> positions, std::array<float, 3> const& query, int k, DistanceT const& distance) {
     QueueT queue(k, {std::numeric_limits<float>::max(), -1});
 
     Inserter<DistanceT, QueueT> inserter;
 
-    inserter(position_and_indices, query, queue, distance);
+    inserter(positions, query, queue, distance);
 
     std::vector<std::pair<float, uint32_t>> result(k);
     queue.copy_values(result.begin());
     std::sort(result.begin(), result.end());
     return result;
-}
-
-
-template <typename T, size_t R>
-std::vector<std::array<T, R>> fill_random_positions(int n, unsigned int seed, float boxsize=1.0f) {
-    std::vector<std::array<T, R>> positions(n);
-
-    std::mt19937 rng(seed);
-    std::uniform_real_distribution<T> dist(0.0f, boxsize);
-
-    for (int i = 0; i < n; ++i) {
-        for (int j = 0; j < R; ++j) {
-            positions[i][j] = dist(rng);
-        }
-    }
-
-    return positions;
 }
 
 }
@@ -57,10 +39,11 @@ typedef TournamentTree<std::pair<float, uint32_t>, PairLessFirst> PairTournament
 
 
 TEST(OptInsertionTest, UnrolledInsertion) {
-    auto positions = fill_random_positions<float, 3>(128, 42);
-    auto queries = fill_random_positions<float, 3>(4, 43);
+    auto positions = wenda::kdtree::make_random_position_and_index(128, 42);
+    auto queries = wenda::kdtree::make_random_position_and_index(4, 43);
 
-    for (auto const& query : queries) {
+    for (auto const& query_and_idx : queries) {
+        auto const& query = query_and_idx.position;
         auto result_vanilla = find_nearest_inserter<InsertShorterDistanceVanilla, L2Distance, PairPriorityQueue>(positions, query, 8, L2Distance());
         auto result_unrolled = find_nearest_inserter<InsertShorterDistanceUnrolled4, L2Distance, PairPriorityQueue>(positions, query, 8, L2Distance());
 
@@ -69,10 +52,11 @@ TEST(OptInsertionTest, UnrolledInsertion) {
 }
 
 TEST(OptInsertionTest, UnrolledInsertionTournamentTree) {
-    auto positions = fill_random_positions<float, 3>(128, 42);
-    auto queries = fill_random_positions<float, 3>(4, 43);
+    auto positions = wenda::kdtree::make_random_position_and_index(128, 42);
+    auto queries = wenda::kdtree::make_random_position_and_index(4, 43);
 
-    for (auto const& query : queries) {
+    for (auto const& query_and_idx : queries) {
+        auto const& query = query_and_idx.position;
         auto result_vanilla = find_nearest_inserter<InsertShorterDistanceVanilla, L2Distance, PairPriorityQueue>(positions, query, 8, L2Distance());
         auto result_unrolled = find_nearest_inserter<InsertShorterDistanceUnrolled4, L2Distance, PairTournamentTree>(positions, query, 8, L2Distance());
 
@@ -81,10 +65,11 @@ TEST(OptInsertionTest, UnrolledInsertionTournamentTree) {
 }
 
 TEST(OptInsertionTest, Avx2Insertion) {
-    auto positions = fill_random_positions<float, 3>(128, 42);
-    auto queries = fill_random_positions<float, 3>(4, 43);
+    auto positions = wenda::kdtree::make_random_position_and_index(128, 42);
+    auto queries = wenda::kdtree::make_random_position_and_index(4, 43);
 
-    for (auto const& query : queries) {
+    for (auto const& query_and_idx : queries) {
+        auto const& query = query_and_idx.position;
         auto result_vanilla = find_nearest_inserter<InsertShorterDistanceVanilla, L2Distance, PairPriorityQueue>(positions, query, 8, L2Distance());
         auto result_avx = find_nearest_inserter<InsertShorterDistanceAVX, L2Distance, PairPriorityQueue>(positions, query, 8, L2Distance());
 
@@ -93,10 +78,11 @@ TEST(OptInsertionTest, Avx2Insertion) {
 }
 
 TEST(OptInsertionTest, Avx2InsertionTournamentTree) {
-    auto positions = fill_random_positions<float, 3>(128, 42);
-    auto queries = fill_random_positions<float, 3>(4, 43);
+    auto positions = wenda::kdtree::make_random_position_and_index(128, 42);
+    auto queries = wenda::kdtree::make_random_position_and_index(4, 43);
 
-    for (auto const& query : queries) {
+    for (auto const& query_and_idx : queries) {
+        auto const& query = query_and_idx.position;
         auto result_vanilla = find_nearest_inserter<InsertShorterDistanceVanilla, L2Distance, PairPriorityQueue>(positions, query, 8, L2Distance());
         auto result_avx = find_nearest_inserter<InsertShorterDistanceAVX, L2Distance, PairTournamentTree>(positions, query, 8, L2Distance());
 

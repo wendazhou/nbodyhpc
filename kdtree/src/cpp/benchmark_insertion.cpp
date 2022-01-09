@@ -10,34 +10,12 @@
 
 #include "kdtree.hpp"
 #include "kdtree_opt.hpp"
+#include "kdtree_utils.h"
 #include "tournament_tree.hpp"
 
 namespace kdt = wenda::kdtree;
 
 namespace {
-
-std::vector<kdt::PositionAndIndex> fill_random_positions_and_index(int n, unsigned int seed) {
-    std::vector<kdt::PositionAndIndex> positions(n);
-
-    typedef r123::Philox4x32 RNG;
-    RNG rng;
-
-    RNG::ctr_type c = {{}};
-    RNG::ukey_type uk = {{}};
-    uk[0] = seed;
-
-    for (int i = 0; i < n; ++i) {
-        c.v[0] = i;
-        auto r = rng(c, uk);
-
-        positions[i].position[0] = r123::u01<float>(r[0]);
-        positions[i].position[1] = r123::u01<float>(r[1]);
-        positions[i].position[2] = r123::u01<float>(r[2]);
-        positions[i].index = i;
-    }
-
-    return positions;
-}
 
 /** This template contains a policy which always operates on the same subset of positions,
  * making it possible for those to be held in fast cache.
@@ -142,7 +120,7 @@ void Insertion(benchmark::State &state) {
     size_t num_points = state.range(0);
     size_t query_size = state.range(1);
 
-    auto positions = fill_random_positions_and_index(num_points, 42);
+    auto positions = kdt::make_random_position_and_index(num_points, 42);
     auto positions_span = tcb::make_span(positions);
     std::array<float, 3> query = {0.5, 0.5, 0.5};
 
@@ -166,7 +144,7 @@ void Memcpy(benchmark::State &state) {
     size_t num_points = state.range(0);
     size_t query_size = state.range(1);
 
-    auto positions = fill_random_positions_and_index(num_points, 42);
+    auto positions = kdt::make_random_position_and_index(num_points, 42);
     auto positions_span = tcb::make_span(positions);
 
     std::vector<kdt::PositionAndIndex> positions_copy(query_size);
@@ -190,7 +168,7 @@ void ReduceDistance(benchmark::State &state) {
     size_t num_points = state.range(0);
     size_t query_size = state.range(1);
 
-    auto positions = fill_random_positions_and_index(num_points, 42);
+    auto positions = kdt::make_random_position_and_index(num_points, 42);
     auto positions_span = tcb::make_span(positions);
 
     std::array<float, 3> query = {0.5, 0.5, 0.5};

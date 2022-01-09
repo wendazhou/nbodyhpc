@@ -7,38 +7,23 @@
 #include <gtest/gtest.h>
 
 #include "kdtree.hpp"
+#include "kdtree_utils.h"
 #include "utils.hpp"
 
 namespace {
 
-template <typename T, size_t R>
-std::vector<std::array<T, R>> fill_random_positions(int n, unsigned int seed, float boxsize=1.0f) {
-    std::vector<std::array<T, R>> positions(n);
-
-    std::mt19937 rng(seed);
-    std::uniform_real_distribution<T> dist(0.0f, boxsize);
-
-    for (int i = 0; i < n; ++i) {
-        for (int j = 0; j < R; ++j) {
-            positions[i][j] = dist(rng);
-        }
-    }
-
-    return positions;
-}
-
 template <typename Distance>
 std::vector<std::pair<float, uint32_t>> find_nearest_naive(
-    tcb::span<const std::array<float, 3>> positions, const std::array<float, 3> &query, int k,
+    tcb::span<const wenda::kdtree::PositionAndIndex> positions, const std::array<float, 3> &query, int k,
     Distance const &distance) {
     std::priority_queue<std::pair<float, uint32_t>> distances(
         {}, std::vector<std::pair<float, uint32_t>>(k, {std::numeric_limits<float>::max(), -1}));
 
-    for (uint32_t i = 0; i < positions.size(); ++i) {
-        auto dist = distance(positions[i], query);
+    for(auto const& pos_and_index : positions) {
+        auto dist = distance(pos_and_index.position, query);
         if (dist < distances.top().first) {
             distances.pop();
-            distances.push({dist, i});
+            distances.push({dist, pos_and_index.index});
         }
     }
 
@@ -57,10 +42,10 @@ std::vector<std::pair<float, uint32_t>> find_nearest_naive(
 class KDTreeRandomTest : public ::testing::TestWithParam<int> {};
 
 TEST_P(KDTreeRandomTest, BuildAndFindNearestClass) {
-    auto positions = fill_random_positions<float, 3>(GetParam(), 42);
+    auto positions = wenda::kdtree::make_random_position_and_index(GetParam(), 42);
     std::array<float, 3> query = {0.5, 0.5, 0.5};
 
-    auto tree = wenda::kdtree::KDTree(positions, {.leaf_size = 8});
+    auto tree = wenda::kdtree::KDTree(std::vector(positions), {.leaf_size = 8});
     wenda::kdtree::KDTreeQueryStatistics statistics;
     auto result = tree.find_closest(query, 4, wenda::kdtree::L2Distance{}, &statistics);
 
@@ -84,10 +69,10 @@ TEST_P(KDTreeRandomTest, BuildAndFindNearestClass) {
 }
 
 TEST_P(KDTreeRandomTest, BuildAndFindNearestClassMT) {
-    auto positions = fill_random_positions<float, 3>(GetParam(), 42);
+    auto positions = wenda::kdtree::make_random_position_and_index(GetParam(), 42);
     std::array<float, 3> query = {0.5, 0.5, 0.5};
 
-    auto tree = wenda::kdtree::KDTree(positions, {.leaf_size = 8, .max_threads = -1});
+    auto tree = wenda::kdtree::KDTree(std::vector(positions), {.leaf_size = 8, .max_threads = -1});
     wenda::kdtree::KDTreeQueryStatistics statistics;
     auto result = tree.find_closest(query, 4, wenda::kdtree::L2Distance{}, &statistics);
 
@@ -113,15 +98,16 @@ TEST_P(KDTreeRandomTest, BuildAndFindNearestClassMT) {
 TEST_P(KDTreeRandomTest, BuildAndFindNearestPeriodic) {
     float boxsize = 2.0f;
 
-    auto positions = fill_random_positions<float, 3>(GetParam(), 42, boxsize);
-    auto queries = fill_random_positions<float, 3>(100, 43, boxsize);
+    auto positions = wenda::kdtree::make_random_position_and_index(GetParam(), 42, boxsize);
+    auto queries = wenda::kdtree::make_random_position_and_index(100, 43, boxsize);
 
     auto distance = wenda::kdtree::L2PeriodicDistance<float>{boxsize};
 
-    auto tree = wenda::kdtree::KDTree(positions, {.leaf_size = 8});
+    auto tree = wenda::kdtree::KDTree(std::vector(positions), {.leaf_size = 8});
     wenda::kdtree::KDTreeQueryStatistics statistics;
 
-    for (auto &query : queries) {
+    for (auto &query_and_idx : queries) {
+        auto& query = query_and_idx.position;
         auto result = tree.find_closest(query, 4, distance, &statistics);
 
         auto naive_result = find_nearest_naive(positions, query, 4, distance);
@@ -146,38 +132,15 @@ TEST_P(KDTreeRandomTest, BuildAndFindNearestPeriodic) {
 INSTANTIATE_TEST_SUITE_P(
     BuildAndFindNearestSmall, KDTreeRandomTest, testing::Values(100, 1000, 10000));
 
-TEST(KDTreeMetric, TestL2PeriodicBox1D) {
-    auto positions = fill_random_positions<float, 1>(100, 42);
-    std::array<float, 2> box = {0.2f, 0.5f};
-
-    wenda::kdtree::L2Distance distance_naive;
-    wenda::kdtree::L2PeriodicDistance<float> distance_periodic{1.0f};
-
-    for (auto const &p : positions) {
-        auto dist = distance_periodic.box_distance(p, box);
-
-        auto dist_naive = std::numeric_limits<float>::max();
-
-        for (int i1 = 0; i1 < 3; ++i1) {
-            auto p_mod = p;
-            p_mod[0] += (i1 - 1);
-
-            auto d = distance_naive.box_distance(p_mod, box);
-            dist_naive = std::min(d, dist_naive);
-        }
-
-        ASSERT_NEAR(dist, dist_naive, 1e-7);
-    }
-}
-
 TEST(KDTreeMetric, TestL2PeriodicBox3D) {
-    auto positions = fill_random_positions<float, 3>(100, 42);
+    auto positions = wenda::kdtree::make_random_position_and_index(100, 42);
     std::array<float, 6> box = {0.2f, 0.5f, 0.4f, 0.6f, 0.0f, 0.1f};
 
     wenda::kdtree::L2Distance distance_naive;
     wenda::kdtree::L2PeriodicDistance<float> distance_periodic{1.0f};
 
-    for (auto const &p : positions) {
+    for (auto const &pos_and_index : positions) {
+        auto const& p = pos_and_index.position;
         auto dist = distance_periodic.box_distance(p, box);
 
         auto dist_naive = std::numeric_limits<float>::max();
@@ -196,6 +159,6 @@ TEST(KDTreeMetric, TestL2PeriodicBox3D) {
             }
         }
 
-        ASSERT_FLOAT_EQ(dist, dist_naive);
+        ASSERT_NEAR(dist, dist_naive, 1e-6);
     }
 }

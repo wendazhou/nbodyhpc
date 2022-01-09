@@ -64,6 +64,112 @@ finish:
 ENDM
 
 
+; Procedure for computing distances and updating tournament tree
+;
+; Arguments are expected as follows
+;   rcx: pointer to positions array
+;   rdx: number of elements in positions array
+;   r8: pointer to query vector
+;   r9: pointer to tournament tree
+;
+insert_shorter_distance_avx2 PROC PUBLIC FRAME
+    ; Stack-based variables
+    push rbp
+.pushreg rbp
+    sub rsp, 64 + 2 * 16; reserve space for local variables and non-volatile registers
+.allocstack 64 + 2 * 8
+    mov rbp, rsp
+.setframe rbp, 0
+    vmovaps [rbp + 64 + 16], xmm6
+.savexmm128 xmm6, 64 + 16
+    vmovaps [rbp + 64], xmm7
+.savexmm128 xmm7, 64
+.endprolog
+
+    indices_buffer EQU rbp
+    distances_buffer EQU rbp + 32
+
+    ; Load query vector into xmm0, and duplicate across lanes
+    vmovdqu xmm2, XMMWORD PTR [query_mask]
+    vmaskmovps xmm2, xmm2, XMMWORD PTR [r8]
+    vinsertf128 ymm2, ymm2, xmm2, 1
+
+    ; Load current best distance
+    vbroadcastss ymm10, DWORD PTR [flt_max]
+
+    ; Load end pointer into rdx
+    lea rdx, [rdx * 8]
+    lea rdx, [rcx + rdx * 8]
+
+loop_start:
+    vmovups ymm3, YMMWORD PTR [rcx]
+    vmovups ymm4, YMMWORD PTR [rcx + 32]
+    vmovups ymm5, YMMWORD PTR [rcx + 64]
+    vmovups ymm6, YMMWORD PTR [rcx + 96]
+
+    vsubps ymm3, ymm3, ymm2
+    vsubps ymm4, ymm4, ymm2
+    vsubps ymm5, ymm5, ymm2
+    vsubps ymm6, ymm6, ymm2
+
+    vdpps ymm3, ymm3, ymm3, 01110001b
+    vdpps ymm4, ymm4, ymm4, 01110010b
+    vdpps ymm5, ymm5, ymm5, 01110100b
+    vdpps ymm6, ymm6, ymm6, 01111000b
+
+    vpunpckhdq ymm7, ymm3, ymm5
+    vpunpckhdq ymm8, ymm4, ymm6
+    vpunpckhdq ymm7, ymm7, ymm8
+
+    vaddps ymm3, ymm3, ymm4
+    vaddps ymm5, ymm5, ymm6
+    vaddps ymm3, ymm3, ymm5
+
+    vmovups YMMWORD PTR [indices_buffer], ymm7
+
+    vcmpltps ymm7, ymm3, ymm10
+    vmovmskps eax, ymm7
+    test eax, eax
+    je loop_end
+
+    vmovups YMMWORD PTR [distances_buffer], ymm3
+    xor r10, r10
+scalar_insert_start:
+    test eax, 1
+    jne scalar_insert_end
+
+    ; perform scalar insertion
+    vmovss xmm0, DWORD PTR [distances_buffer + r10]
+    ucomiss xmm0, xmm10
+    jge scalar_insert_end
+
+    vbroadcastss ymm10, xmm0
+    mov r11d, [indices_buffer + r10]
+scalar_insert_end:
+    shr eax, 1
+    inc r10
+    test eax, eax
+    jne scalar_insert_start
+loop_end:
+    lea rcx, [rcx + 128]
+    cmp rcx, rdx
+    jb loop_start
+
+    mov eax, r11d
+
+; Epilog
+    vmovaps xmm6, [rbp + 64 + 16]
+    vmovaps xmm7, [rbp + 64]
+    add rsp, 64 + 2 * 16
+    pop rbp
+
+    ret
+
+    ALIGN 16
+    query_mask DWORD -1, -1, -1, 0
+    flt_max DWORD 07f7fffffr
+insert_shorter_distance_avx2 ENDP
+
 ; Procedure for replacing top element
 ; C prototype: void tournament_tree_update_root(tournament_tree_t *tree, uint32_t index, float element_value uint32_t element_idx)
 ; 
