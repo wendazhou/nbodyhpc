@@ -15,6 +15,10 @@
 
 namespace kdt = wenda::kdtree;
 
+extern "C" {
+    uint32_t insert_shorter_distance_avx2(void *positions, size_t n, float *const query);
+}
+
 namespace {
 
 /** This template contains a policy which always operates on the same subset of positions,
@@ -198,6 +202,28 @@ void ReduceDistance(benchmark::State &state) {
     state.SetBytesProcessed(state.iterations() * query_size * sizeof(kdt::PositionAndIndex));
 }
 
+void ComputeClosestAVX2(benchmark::State &state) {
+    size_t num_points = state.range(0);
+    size_t query_size = state.range(1);
+
+    auto positions = kdt::make_random_position_and_index(num_points, 42);
+    auto positions_span = tcb::make_span(positions);
+
+    std::array<float, 3> query = {0.5, 0.5, 0.5};
+    kdt::L2Distance distance;
+
+    size_t idx = 0;
+
+    for (auto _ : state) {
+        auto result = insert_shorter_distance_avx2(
+            positions_span.subspan(idx * query_size, query_size).data(), query_size, query.data());
+        benchmark::DoNotOptimize(result);
+        idx = (idx + 1) % (num_points / query_size);
+    }
+
+    state.SetBytesProcessed(state.iterations() * query_size * sizeof(kdt::PositionAndIndex));
+}
+
 } // namespace
 
 #define DEFINE_BENCHMARKS_ALL_INSERTERS(Queue, Loop)                                               \
@@ -216,3 +242,4 @@ DEFINE_BENCHMARKS_ALL_INSERTERS(kdt::TournamentTree, Cached)
 
 BENCHMARK(ReduceDistance)->Args({1000000, 1024});
 BENCHMARK(Memcpy)->Args({1000000, 1024});
+BENCHMARK(ComputeClosestAVX2)->Args({1000000, 1024});
