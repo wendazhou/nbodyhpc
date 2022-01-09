@@ -99,7 +99,7 @@ insert_shorter_distance_avx2 PROC PUBLIC FRAME
 
     ; Load end pointer into rdx
     lea rdx, [rdx * 8]
-    lea rdx, [rcx + rdx * 8]
+    lea rdx, [rcx + rdx * 2]
 
 loop_start:
     vmovups ymm3, YMMWORD PTR [rcx]

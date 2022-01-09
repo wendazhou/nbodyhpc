@@ -16,7 +16,7 @@
 namespace kdt = wenda::kdtree;
 
 extern "C" {
-    uint32_t insert_shorter_distance_avx2(void *positions, size_t n, float *const query);
+uint32_t insert_shorter_distance_avx2(void *positions, size_t n, float *const query);
 }
 
 namespace {
@@ -214,9 +214,12 @@ void ComputeClosestAVX2(benchmark::State &state) {
 
     size_t idx = 0;
 
+    auto positions_ptr = positions.data();
+
     for (auto _ : state) {
+        assert(idx * query_size + query_size <= positions.size());
         auto result = insert_shorter_distance_avx2(
-            positions_span.subspan(idx * query_size, query_size).data(), query_size, query.data());
+            positions_ptr + idx * query_size, query_size, query.data());
         benchmark::DoNotOptimize(result);
         idx = (idx + 1) % (num_points / query_size);
     }
@@ -241,5 +244,5 @@ DEFINE_BENCHMARKS_ALL_INSERTERS(kdt::TournamentTree, Cached)
 #undef DEFINE_BENCHMARKS_ALL_INSERTERS
 
 BENCHMARK(ReduceDistance)->Args({1000000, 1024});
-BENCHMARK(Memcpy)->Args({1000000, 1024});
 BENCHMARK(ComputeClosestAVX2)->Args({1000000, 1024});
+BENCHMARK(Memcpy)->Args({1000000, 1024});

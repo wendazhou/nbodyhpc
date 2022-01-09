@@ -66,7 +66,7 @@ insert_shorter_distance_avx2:
     vbroadcastss ymm10, DWORD PTR [flt_max]
 
     lea rsi, [rsi  * 8]
-    lea rsi, [rdi + rsi * 8]
+    lea rsi, [rdi + rsi * 2]
 
 .loop_start:
     vmovups ymm3, YMMWORD PTR [rdi]
