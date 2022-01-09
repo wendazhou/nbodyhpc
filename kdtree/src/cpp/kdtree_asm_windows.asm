@@ -107,6 +107,10 @@ loop_start:
     vmovups ymm5, YMMWORD PTR [rcx + 64]
     vmovups ymm6, YMMWORD PTR [rcx + 96]
 
+    vpunpckhdq ymm7, ymm3, ymm5
+    vpunpckhdq ymm8, ymm4, ymm6
+    vpunpckhdq ymm7, ymm7, ymm8
+
     vsubps ymm3, ymm3, ymm2
     vsubps ymm4, ymm4, ymm2
     vsubps ymm5, ymm5, ymm2
@@ -116,10 +120,6 @@ loop_start:
     vdpps ymm4, ymm4, ymm4, 01110010b
     vdpps ymm5, ymm5, ymm5, 01110100b
     vdpps ymm6, ymm6, ymm6, 01111000b
-
-    vpunpckhdq ymm7, ymm3, ymm5
-    vpunpckhdq ymm8, ymm4, ymm6
-    vpunpckhdq ymm7, ymm7, ymm8
 
     vaddps ymm3, ymm3, ymm4
     vaddps ymm5, ymm5, ymm6
@@ -136,12 +136,12 @@ loop_start:
     xor r10, r10
 scalar_insert_start:
     test eax, 1
-    jne scalar_insert_end
+    je scalar_insert_end
 
     ; perform scalar insertion
     vmovss xmm0, DWORD PTR [distances_buffer + 4 * r10]
     ucomiss xmm0, xmm10
-    jge scalar_insert_end
+    jae scalar_insert_end
 
     vbroadcastss ymm10, xmm0
     mov r11d, [indices_buffer + 4 * r10]

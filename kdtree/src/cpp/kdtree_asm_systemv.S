@@ -61,7 +61,7 @@ insert_shorter_distance_avx2:
     sub rsp, 64
 
     vmovdqa xmm2, XMMWORD PTR [query_mask]
-    vmaskmovps xmm2, xmm2, XMMWORD PTR [rcx]
+    vmaskmovps xmm2, xmm2, XMMWORD PTR [rdx]
     vinsertf128 ymm2, ymm2, xmm2, 1
     vbroadcastss ymm10, DWORD PTR [flt_max]
 
@@ -74,6 +74,10 @@ insert_shorter_distance_avx2:
     vmovups ymm5, YMMWORD PTR [rdi + 64]
     vmovups ymm6, YMMWORD PTR [rdi + 96]
 
+    vpunpckhdq ymm7, ymm3, ymm5
+    vpunpckhdq ymm8, ymm4, ymm6
+    vpunpckhdq ymm7, ymm7, ymm8
+
     vsubps ymm3, ymm3, ymm2
     vsubps ymm4, ymm4, ymm2
     vsubps ymm5, ymm5, ymm2
@@ -84,10 +88,6 @@ insert_shorter_distance_avx2:
     vdpps ymm5, ymm5, ymm5, 0b01110100
     vdpps ymm6, ymm6, ymm6, 0b01111000
 
-    vpunpckhdq ymm7, ymm3, ymm5
-    vpunpckhdq ymm8, ymm4, ymm6
-    vpunpckhdq ymm7, ymm7, ymm8
-
     vaddps ymm3, ymm3, ymm4
     vaddps ymm5, ymm5, ymm6
     vaddps ymm3, ymm3, ymm5
@@ -97,18 +97,18 @@ insert_shorter_distance_avx2:
     vcmpltps ymm7, ymm3, ymm10
     vmovmskps eax, ymm7
     test eax, eax
-    je loop_end
+    je .loop_end
 
     vmovups YMMWORD PTR [rsp], ymm3
     xor r10, r10
 
-..scalar_insert_start:
+.scalar_insert_start:
     test eax, 1
-    jne scalar_insert_end
+    je .scalar_insert_end
 
     vmovss xmm0, DWORD PTR [rsp + 4 * r10]
     ucomiss xmm0, xmm10
-    jge scalar_insert_end
+    jae .scalar_insert_end
 
     vbroadcastss ymm10, xmm0
     mov r11d, [rsp + 32 + 4 * r10]
@@ -116,13 +116,15 @@ insert_shorter_distance_avx2:
     shr eax, 1
     inc r10
     test eax, eax
-    jne scalar_insert_start
+    jne .scalar_insert_start
 .loop_end:
-    lea rsi, [rsi + 128]
-    cmp rsi, rdi
-    jb loop_start
+    lea rdi, [rdi + 128]
+    cmp rdi, rsi
+    jb .loop_start
 
     mov eax, r11d
+    add rsp, 64
+    ret
 
 .align 16
 query_mask:

@@ -4,8 +4,8 @@
 #include <cstdint>
 #include <vector>
 
-#include <random123/philox.h>
-#include <random123/uniform.hpp>
+#include <Random123/philox.h>
+#include <Random123/uniform.hpp>
 
 #include "kdtree.hpp"
 
