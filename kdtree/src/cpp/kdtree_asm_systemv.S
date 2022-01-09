@@ -141,7 +141,7 @@ wenda_find_closest_l2_avx2:
 
     vbroadcastss xmm5, xmm3
     mov eax, DWORD PTR[rdi + 12]
-.tail_end
+.tail_end:
     add rdi, 16
     cmp rdi, rsi
     jb .tail_start
