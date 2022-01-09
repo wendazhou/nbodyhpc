@@ -10,6 +10,7 @@
 
 #include "kdtree.hpp"
 #include "kdtree_opt.hpp"
+#include "kdtree_opt_asm.hpp"
 #include "kdtree_utils.h"
 #include "tournament_tree.hpp"
 
@@ -218,8 +219,8 @@ void ComputeClosestAVX2(benchmark::State &state) {
 
     for (auto _ : state) {
         assert(idx * query_size + query_size <= positions.size());
-        auto result = wenda_find_closest_l2_avx2(
-            positions_ptr + idx * query_size, query_size, query.data());
+        auto result =
+            wenda_find_closest_l2_avx2(positions_ptr + idx * query_size, query_size, query.data());
         benchmark::DoNotOptimize(result);
         idx = (idx + 1) % (num_points / query_size);
     }
@@ -235,6 +236,8 @@ void ComputeClosestAVX2(benchmark::State &state) {
     BENCHMARK_TEMPLATE(Insertion, kdt::InsertShorterDistanceUnrolled4, Queue, Loop)                \
         ->Args({1000000, 1024});                                                                   \
     BENCHMARK_TEMPLATE(Insertion, kdt::InsertShorterDistanceAVX, Queue, Loop)                      \
+        ->Args({1000000, 1024});                                                                   \
+    BENCHMARK_TEMPLATE(Insertion, kdt::InsertShorterDistanceAsmAvx2, Queue, Loop)                 \
         ->Args({1000000, 1024});
 
 DEFINE_BENCHMARKS_ALL_INSERTERS(kdt::TournamentTree, RandomBlock)

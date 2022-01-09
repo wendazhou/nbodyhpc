@@ -93,6 +93,11 @@ template <typename T, typename Cmp = std::less<T>> class TournamentTree {
             return v.first;
         });
     }
+
+    //! Returns the underlying data vector
+    //! Note: this should be manipulated with care, as
+    //!     it may break the tree invariants.
+    std::vector<value_t>& data() { return data_; }
 };
 
 /** An adapter for std::priority_queue which has the same interface as TournamentTree

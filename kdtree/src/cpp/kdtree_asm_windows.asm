@@ -62,6 +62,21 @@ finish:
     mov DWORD PTR[ptr_tree + 8], reg_tmp_winner_idx
 ENDM
 
+; Macro for swapping top element in the tree
+; Arguments:
+;  - tt_reg: register containing the address of the tree
+;  - out_idx_reg: (output) register which will contain the index of the top element
+;  - fv_reg: xmm register containing the first value of the element
+;  - sv_reg: register containing the second value of the element
+;  - out_address_reg: temporary register, will contain the address of the top element
+tournament_tree_swap_top_m MACRO tt_reg, out_idx_reg, fv_reg, sv_reg, out_address_reg
+    mov out_idx_reg, DWORD PTR [tt_reg + 8]
+    lea out_address_reg, [out_idx_reg + out_idx_reg * 2]
+    lea out_address_reg, [tt_reg + out_address_reg * 4]
+    vmovss DWORD PTR[out_address_reg], fv_reg
+    mov DWORD PTR[out_address_reg + 4], sv_reg
+ENDM
+
 save_xmm_registers MACRO offset: REQ, regs :VARARG
     count = 0
     FOR reg,<regs>
@@ -122,13 +137,12 @@ ENDM
 ; Find index of element closest to given query in array
 wenda_find_closest_l2_avx2 PROC PUBLIC FRAME
     ; Stack-based variables
-
-    stack_size_find_closest EQU 64 + 4 * 16
+    stack_size = 64 + 4 * 16
 
     push rbp
 .pushreg rbp
-    sub rsp, stack_size_find_closest ; reserve space for local variables and non-volatile registers
-.allocstack stack_size_find_closest
+    sub rsp, stack_size ; reserve space for local variables and non-volatile registers
+.allocstack stack_size
     mov rbp, rsp
 .setframe rbp, 0
     save_xmm_registers 64, xmm6, xmm7, xmm8, xmm9
@@ -208,7 +222,7 @@ tail_end:
 done:
 ; Epilog
     restore_xmm_registers 64, xmm6, xmm7, xmm8, xmm9
-    add rsp, stack_size_find_closest
+    add rsp, stack_size
     pop rbp
 
     ret
@@ -221,23 +235,80 @@ wenda_find_closest_l2_avx2 ENDP
 ;   - rcx: address of array of points, index pairs
 ;   - rdx: number of points in array
 ;   - r8: address of query vector
-;   - r9: 
+;   - r9: address of the tournament tree
 wenda_insert_closest_l2_avx2 PROC PUBLIC FRAME
-    stack_size EQU 64 + 3 * 16
+    stack_size = 64 + 4 * 16
 
-    push rbp
-.pushreg rbp
+    FOR reg, <rbp,rbx,rdi,rsi,r12,r13,r14>
+        push reg
+        .pushreg reg
+    ENDM
     sub rsp, stack_size ; reserve space for local variables and non-volatile registers
 .allocstack stack_size
     mov rbp, rsp
 .setframe rbp, 0
-    save_xmm_registers 64, xmm6, xmm7, xmm8
+    save_xmm_registers 64, xmm6, xmm7, xmm8, xmm9
 .endprolog
 
     indices_buffer EQU rbp
     distances_buffer EQU rbp + 32
 
     load_query_vector r8, 2, query_mask
+
+    ; Load current best distance from tree
+    vbroadcastss ymm9, DWORD PTR [r9]
+
+    ; Load end pointer into rdx
+    lea rdx, [rdx * 8]
+    lea rdx, [rcx + rdx * 2 - 7 * 16]
+
+loop_start:
+    load_and_compute_l2 ymm2
+
+    vmovups YMMWORD PTR [indices_buffer], ymm7
+
+    vcmpltps ymm7, ymm3, ymm9
+    vmovmskps ebx, ymm7
+    test ebx, ebx
+    je loop_end
+
+    vmovups YMMWORD PTR [distances_buffer], ymm3
+    xor r10, r10
+
+scalar_insert_start:
+    test ebx, 1
+    je scalar_insert_end
+
+    ; test for current best
+    vmovss xmm0, DWORD PTR [distances_buffer + r10]
+    ucomiss xmm0, xmm9
+    jae scalar_insert_end
+
+    ; update tournament tree with new best
+    mov esi, [indices_buffer + r10]
+    tournament_tree_swap_top_m r9, edi, xmm0, esi, r11
+    tournament_tree_update_root_m r9, edi, esi, r11d, r12d, r13d
+
+    ; reload top value, xmm0 is updated by the tournament tree macros
+    vbroadcastss ymm9, xmm0
+scalar_insert_end:
+    shr ebx, 1
+    add r10, 4
+    test ebx, ebx
+    jne scalar_insert_start
+
+loop_end:
+    lea rcx, [rcx + 128]
+    cmp rcx, rdx
+    jb loop_start
+
+; epilog
+    restore_xmm_registers 64, xmm6, xmm7, xmm8, xmm9
+    add rsp, stack_size
+    FOR reg, <r14,r13,r12,rsi,rdi,rbx,rbp>
+        pop reg
+    ENDM
+    ret
 wenda_insert_closest_l2_avx2 ENDP
 
 ALIGN 16
@@ -250,8 +321,8 @@ flt_max DWORD 07f7fffffr
 ; Arguments are expected as follows:
 ;   rcx: address of tournament tree
 ;   edx: index at which element is placed
-;   xmm0: value of the inserted element
-;   r9d: index of the inserted element
+;   xmm0: first value of the inserted element
+;   r9d: second value of the inserted element
 tournament_tree_update_root PROC PUBLIC
     tournament_tree_update_root_m rcx, edx, r9d, r10d, r8d, r11d
     ret
@@ -264,10 +335,7 @@ tournament_tree_update_root ENDP
 ;   xmm0: first value of the inserted element
 ;   r8d: second value of the inserted element
 tournament_tree_replace_top PROC PUBLIC
-    mov edx, DWORD PTR [rcx + 8]
-    lea eax, [edx + 2 * edx]
-    vmovss DWORD PTR[rcx + 4 * rax], xmm0
-    mov DWORD PTR[rcx + 4 * rax + 4], r8d
+    tournament_tree_swap_top_m rcx, edx, xmm0, r8d, rax
     mov r9d, r8d
     jmp tournament_tree_update_root ; tail call
 tournament_tree_replace_top ENDP

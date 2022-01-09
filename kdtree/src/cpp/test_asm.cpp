@@ -11,10 +11,9 @@ extern "C" {
 void tournament_tree_update_root(
     void *tree, uint32_t idx, float element_value, uint32_t element_idx);
 
-void tournament_tree_replace_top(
-    void* tree, float element_value, uint32_t element_idx);
-
-uint32_t wenda_find_closest_l2_avx2(void *positions, size_t n, float *const query);
+void tournament_tree_replace_top(void *tree, float element_value, uint32_t element_idx);
+uint32_t wenda_find_closest_l2_avx2(void *positions, size_t n, float const *query);
+void wenda_insert_closest_l2_avx2(void *positions, size_t n, float const *query, void *tree);
 }
 
 namespace {
@@ -102,7 +101,7 @@ INSTANTIATE_TEST_SUITE_P(
         std::pair<int, int>{4, 8}, std::pair<int, int>{13, 1}, std::pair<int, int>{13, 5},
         std::pair<int, int>{13, 27}));
 
-TEST(InserterAsm, InsertFindClosest) {
+TEST(InserterAsm, FindClosest) {
     wenda::kdtree::L2Distance distance;
 
     for (int seed : {42, 43, 44, 45}) {
@@ -124,7 +123,7 @@ TEST(InserterAsm, InsertFindClosest) {
     }
 }
 
-TEST(InserterAsm, InsertFindClosestTail) {
+TEST(InserterAsm, FindClosestTail) {
     wenda::kdtree::L2Distance distance;
 
     for (int seed : {42, 43, 44, 45}) {
@@ -146,7 +145,7 @@ TEST(InserterAsm, InsertFindClosestTail) {
     }
 }
 
-TEST(InserterAsm, InsertFindClosestMultiple) {
+TEST(InserterAsm, FindClosestMultiple) {
     wenda::kdtree::L2Distance distance;
 
     for (int seed : {42, 43, 44, 45}) {
@@ -172,5 +171,43 @@ TEST(InserterAsm, InsertFindClosestMultiple) {
         } else {
             ASSERT_EQ(result.second, closest_idx_asm_2);
         }
+    }
+}
+
+TEST(InserterAsm, InsertL2Bulk) {
+    const uint32_t num_closest = 16;
+    wenda::kdtree::L2Distance distance;
+
+    for (int seed : {42, 43, 44, 45}) {
+
+        auto positions = wenda::kdtree::make_random_position_and_index(128, seed);
+        auto tree = PairTournamentTree(num_closest);
+        auto tree2 = PairTournamentTree(num_closest);
+
+        std::array<float, 3> query = {0.5f, 0.5f, 0.5f};
+
+        wenda_insert_closest_l2_avx2(
+            positions.data(), positions.size(), query.data(), tree.data().data());
+
+        for (auto const &p : positions) {
+            auto dist = distance(p.position, query);
+            if (dist < tree2.top().first) {
+                tree2.replace_top({dist, p.index});
+            }
+        }
+
+        // we need to copy out to guarantee same results
+        // due to arbitrary comparison of equal floats which may
+        // differ between algorithms.
+        std::vector<std::pair<float, uint32_t>> result(num_closest);
+        std::vector<std::pair<float, uint32_t>> result2(num_closest);
+
+        tree.copy_values(result.begin());
+        tree2.copy_values(result2.begin());
+
+        std::sort(result.begin(), result.end());
+        std::sort(result2.begin(), result2.end());
+
+        ASSERT_EQ(result, result2);
     }
 }
