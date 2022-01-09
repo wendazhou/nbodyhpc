@@ -63,7 +63,7 @@ template <typename Inserter> struct Contiguous {
 
     float operator()(uint32_t index, std::array<float, 3> const &query) {
         typename Inserter::queue_t queue(32, {std::numeric_limits<float>::max(), -1});
-        auto offset = (index * query_size_) % positions_.size();
+        auto offset = (index * query_size_) % (positions_.size() - query_size_);
 
         inserter_(positions_.subspan(offset, query_size_), query, queue, distance_);
         return queue.top().first;
