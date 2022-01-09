@@ -1,18 +1,18 @@
+#include <numeric>
 #include <random>
 
 #include <gtest/gtest.h>
 
 #include "kdtree.hpp"
+#include "kdtree_utils.h"
 #include "tournament_tree.hpp"
 
 extern "C" {
 void tournament_tree_update_root(
     void *tree, uint32_t idx, float element_value, uint32_t element_idx);
 
-uint32_t insert_shorter_distance_avx2(void *positions, size_t n, float* const query);
-
+uint32_t insert_shorter_distance_avx2(void *positions, size_t n, float *const query);
 }
-
 
 namespace {
 
@@ -77,5 +77,22 @@ INSTANTIATE_TEST_SUITE_P(
         std::pair<int, int>{13, 27}));
 
 TEST(InserterAsm, InsertFindClosest) {
-    std::vector<wenda::kdtree::PositionAndIndex> positions(128);
+    wenda::kdtree::L2Distance distance;
+    auto positions = wenda::kdtree::make_random_position_and_index(128, 42);
+    std::array<float, 3> query = {0.5f, 0.5f, 0.5f};
+
+    auto closest_idx_asm =
+        insert_shorter_distance_avx2(positions.data(), positions.size(), query.data());
+
+    auto result = std::transform_reduce(
+        positions.begin(), positions.end(),
+        std::pair<float, uint32_t>{std::numeric_limits<float>::max(), -1},
+        [](auto const& p1, auto const& p2) {
+            return p1.first < p2.first ? p1 : p2;
+        },
+        [&](wenda::kdtree::PositionAndIndex const& p) {
+            return std::make_pair(distance(p.position, query), p.index);
+        });
+
+    ASSERT_EQ(result.second, closest_idx_asm);
 }

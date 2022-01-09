@@ -90,7 +90,7 @@ insert_shorter_distance_avx2 PROC PUBLIC FRAME
     distances_buffer EQU rbp + 32
 
     ; Load query vector into xmm0, and duplicate across lanes
-    vmovdqu xmm2, XMMWORD PTR [query_mask]
+    vmovdqa xmm2, XMMWORD PTR [query_mask]
     vmaskmovps xmm2, xmm2, XMMWORD PTR [r8]
     vinsertf128 ymm2, ymm2, xmm2, 1
 
@@ -139,12 +139,12 @@ scalar_insert_start:
     jne scalar_insert_end
 
     ; perform scalar insertion
-    vmovss xmm0, DWORD PTR [distances_buffer + r10]
+    vmovss xmm0, DWORD PTR [distances_buffer + 4 * r10]
     ucomiss xmm0, xmm10
     jge scalar_insert_end
 
     vbroadcastss ymm10, xmm0
-    mov r11d, [indices_buffer + r10]
+    mov r11d, [indices_buffer + 4 * r10]
 scalar_insert_end:
     shr eax, 1
     inc r10
