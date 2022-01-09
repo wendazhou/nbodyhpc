@@ -16,7 +16,7 @@
 namespace kdt = wenda::kdtree;
 
 extern "C" {
-uint32_t insert_shorter_distance_avx2(void *positions, size_t n, float *const query);
+uint32_t wenda_find_closest_l2_avx2(void *positions, size_t n, float *const query);
 }
 
 namespace {
@@ -218,7 +218,7 @@ void ComputeClosestAVX2(benchmark::State &state) {
 
     for (auto _ : state) {
         assert(idx * query_size + query_size <= positions.size());
-        auto result = insert_shorter_distance_avx2(
+        auto result = wenda_find_closest_l2_avx2(
             positions_ptr + idx * query_size, query_size, query.data());
         benchmark::DoNotOptimize(result);
         idx = (idx + 1) % (num_points / query_size);

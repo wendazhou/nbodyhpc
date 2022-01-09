@@ -64,15 +64,34 @@ finish:
 ENDM
 
 
-; Procedure for computing distances and updating tournament tree
-;
-; Arguments are expected as follows
-;   rcx: pointer to positions array
-;   rdx: number of elements in positions array
-;   r8: pointer to query vector
-;   r9: pointer to tournament tree
-;
-insert_shorter_distance_avx2 PROC PUBLIC FRAME
+; Macro for loading and computing 
+load_and_compute_l2 MACRO query_reg
+    vmovups ymm3, YMMWORD PTR [rcx]
+    vmovups ymm4, YMMWORD PTR [rcx + 32]
+    vmovups ymm5, YMMWORD PTR [rcx + 64]
+    vmovups ymm6, YMMWORD PTR [rcx + 96]
+
+    vpunpckhdq ymm7, ymm3, ymm5
+    vpunpckhdq ymm8, ymm4, ymm6
+    vpunpckhdq ymm7, ymm7, ymm8
+
+    vsubps ymm3, ymm3, query_reg
+    vsubps ymm4, ymm4, query_reg
+    vsubps ymm5, ymm5, query_reg
+    vsubps ymm6, ymm6, query_reg
+
+    vdpps ymm3, ymm3, ymm3, 01110001b
+    vdpps ymm4, ymm4, ymm4, 01110010b
+    vdpps ymm5, ymm5, ymm5, 01110100b
+    vdpps ymm6, ymm6, ymm6, 01111000b
+
+    vaddps ymm3, ymm3, ymm4
+    vaddps ymm5, ymm5, ymm6
+    vaddps ymm3, ymm3, ymm5
+ENDM
+
+
+wenda_find_closest_l2_avx2 PROC PUBLIC FRAME
     ; Stack-based variables
     push rbp
 .pushreg rbp
@@ -102,28 +121,7 @@ insert_shorter_distance_avx2 PROC PUBLIC FRAME
     lea rdx, [rcx + rdx * 2]
 
 loop_start:
-    vmovups ymm3, YMMWORD PTR [rcx]
-    vmovups ymm4, YMMWORD PTR [rcx + 32]
-    vmovups ymm5, YMMWORD PTR [rcx + 64]
-    vmovups ymm6, YMMWORD PTR [rcx + 96]
-
-    vpunpckhdq ymm7, ymm3, ymm5
-    vpunpckhdq ymm8, ymm4, ymm6
-    vpunpckhdq ymm7, ymm7, ymm8
-
-    vsubps ymm3, ymm3, ymm2
-    vsubps ymm4, ymm4, ymm2
-    vsubps ymm5, ymm5, ymm2
-    vsubps ymm6, ymm6, ymm2
-
-    vdpps ymm3, ymm3, ymm3, 01110001b
-    vdpps ymm4, ymm4, ymm4, 01110010b
-    vdpps ymm5, ymm5, ymm5, 01110100b
-    vdpps ymm6, ymm6, ymm6, 01111000b
-
-    vaddps ymm3, ymm3, ymm4
-    vaddps ymm5, ymm5, ymm6
-    vaddps ymm3, ymm3, ymm5
+    load_and_compute_l2 ymm2
 
     vmovups YMMWORD PTR [indices_buffer], ymm7
 
@@ -168,7 +166,7 @@ loop_end:
     ALIGN 16
     query_mask DWORD -1, -1, -1, 0
     flt_max DWORD 07f7fffffr
-insert_shorter_distance_avx2 ENDP
+wenda_find_closest_l2_avx2 ENDP
 
 ; Procedure for replacing top element
 ; C prototype: void tournament_tree_update_root(tournament_tree_t *tree, uint32_t index, float element_value uint32_t element_idx)

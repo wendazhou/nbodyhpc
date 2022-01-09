@@ -11,7 +11,7 @@ extern "C" {
 void tournament_tree_update_root(
     void *tree, uint32_t idx, float element_value, uint32_t element_idx);
 
-uint32_t insert_shorter_distance_avx2(void *positions, size_t n, float *const query);
+uint32_t wenda_find_closest_l2_avx2(void *positions, size_t n, float *const query);
 }
 
 namespace {
@@ -82,7 +82,7 @@ TEST(InserterAsm, InsertFindClosest) {
     std::array<float, 3> query = {0.5f, 0.5f, 0.5f};
 
     auto closest_idx_asm =
-        insert_shorter_distance_avx2(positions.data(), positions.size(), query.data());
+        wenda_find_closest_l2_avx2(positions.data(), positions.size(), query.data());
 
     auto result = std::transform_reduce(
         positions.begin(), positions.end(),
@@ -103,10 +103,10 @@ TEST(InserterAsm, InsertFindClosestMultiple) {
     std::array<float, 3> query = {0.5f, 0.5f, 0.5f};
 
     auto closest_idx_asm_1 =
-        insert_shorter_distance_avx2(positions.data(), 128, query.data());
+        wenda_find_closest_l2_avx2(positions.data(), 128, query.data());
 
     auto closest_idx_asm_2 =
-        insert_shorter_distance_avx2(positions.data() + 128, 128, query.data());
+        wenda_find_closest_l2_avx2(positions.data() + 128, 128, query.data());
 
     auto result = std::transform_reduce(
         positions.begin(), positions.end(),
@@ -118,5 +118,10 @@ TEST(InserterAsm, InsertFindClosestMultiple) {
             return std::make_pair(distance(p.position, query), p.index);
         });
 
-    ASSERT_TRUE(result.second == closest_idx_asm_1 || result.second == closest_idx_asm_2);
+    if (result.second < 128) {
+        ASSERT_EQ(result.second, closest_idx_asm_1);
+    }
+    else {
+        ASSERT_EQ(result.second - 128, closest_idx_asm_2);
+    }
 }

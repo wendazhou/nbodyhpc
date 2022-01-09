@@ -55,9 +55,9 @@ tournament_tree_update_root:
     mov DWORD PTR[rdi + 8], ecx
     ret
 
-.type insert_shorter_distance_avx2, @function
-.global insert_shorter_distance_avx2
-insert_shorter_distance_avx2:
+.type wenda_find_closest_l2_avx2, @function
+.global wenda_find_closest_l2_avx2
+wenda_find_closest_l2_avx2:
     sub rsp, 64
 
     vmovdqa xmm2, XMMWORD PTR [query_mask]
