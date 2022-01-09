@@ -18,6 +18,7 @@
 ; Additionally, rax, xmm0 and xmm1 are clobbered by the macro.
 ;
 tournament_tree_update_root_m MACRO ptr_tree, reg_index, reg_element_idx, reg_tmp_winner_idx, reg_tmp1, reg_tmp2
+    LOCAL loop_start, loop_check, finish
     cmp reg_index, 1
     jbe finish
 
