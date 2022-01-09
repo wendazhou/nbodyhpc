@@ -63,13 +63,13 @@ tournament_tree_update_root:
 #   esi: second value of the inserted element
 .type tournament_tree_replace_top, @function
 .global tournament_tree_replace_top
-tournament_tree_replace_top
+tournament_tree_replace_top:
     mov edx, esi
     mov esi, DWORD PTR[rdi + 8]
     lea eax, [esi + 2 * esi]
     vmovss DWORD PTR[rdi + 4 * rax], xmm0
     mov DWORD PTR[rdi + 4 * rax + 4], edx
-    jmp tournament_tree_update_root ; tail call
+    jmp tournament_tree_update_root # tail call
 
 .type wenda_find_closest_l2_avx2, @function
 .global wenda_find_closest_l2_avx2
