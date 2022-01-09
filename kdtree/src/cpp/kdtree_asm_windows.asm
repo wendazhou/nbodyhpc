@@ -58,11 +58,26 @@ loop_check:
     ja loop_start
 finish:
     movss DWORD PTR[ptr_tree], xmm0
-    mov DWORD PTR[ptr_tree + 4], r9d
-    mov DWORD PTR[ptr_tree + 8], r10d
-    ret
+    mov DWORD PTR[ptr_tree + 4], reg_element_idx
+    mov DWORD PTR[ptr_tree + 8], reg_tmp_winner_idx
 ENDM
 
+save_xmm_registers MACRO offset: REQ, regs :VARARG
+    count = 0
+    FOR reg,<regs>
+        vmovaps [rbp + offset + 16 * count], reg
+        .savexmm128 reg, offset + 16 * count
+        count = count + 1
+    ENDM
+ENDM
+
+restore_xmm_registers MACRO offset: REQ, regs :VARARG
+    count = 0
+    FOR reg,<regs>
+        vmovaps reg, [rbp + offset + 16 * count]
+        count = count + 1
+    ENDM
+ENDM
 
 ; Macro for loading and computing 
 load_and_compute_l2 MACRO query_reg
@@ -90,29 +105,40 @@ load_and_compute_l2 MACRO query_reg
     vaddps ymm3, ymm3, ymm5
 ENDM
 
+; Loads query vector and duplicates across lanes
+;   - reg_source: register containing the address of the query vector to load
+;   - reg_idx: integer representing the xmm register to load into
+;   - query_mask: address of an aligned constant mask DWORD -1, -1, -1, 0
+load_query_vector MACRO reg_source, reg_idx, query_mask
+    query_reg_xmm CATSTR <xmm>, %reg_idx
+    query_reg_ymm CATSTR <ymm>, %reg_idx
+
+    vmovdqa query_reg_xmm, XMMWORD PTR [query_mask]
+    vmaskmovps query_reg_xmm, query_reg_xmm, XMMWORD PTR [reg_source]
+    vinsertf128 query_reg_ymm, query_reg_ymm, query_reg_xmm, 1
+ENDM
+
 
 ; Find index of element closest to given query in array
 wenda_find_closest_l2_avx2 PROC PUBLIC FRAME
     ; Stack-based variables
+
+    stack_size EQU 64 + 3 * 16
+
     push rbp
 .pushreg rbp
-    sub rsp, 64 + 2 * 16; reserve space for local variables and non-volatile registers
-.allocstack 64 + 2 * 8
+    sub rsp, stack_size ; reserve space for local variables and non-volatile registers
+.allocstack stack_size
     mov rbp, rsp
 .setframe rbp, 0
-    vmovaps [rbp + 64 + 16], xmm6
-.savexmm128 xmm6, 64 + 16
-    vmovaps [rbp + 64], xmm7
-.savexmm128 xmm7, 64
+    save_xmm_registers 64, xmm6, xmm7, xmm8
 .endprolog
 
     indices_buffer EQU rbp
     distances_buffer EQU rbp + 32
 
     ; Load query vector into xmm0, and duplicate across lanes
-    vmovdqa xmm2, XMMWORD PTR [query_mask]
-    vmaskmovps xmm2, xmm2, XMMWORD PTR [r8]
-    vinsertf128 ymm2, ymm2, xmm2, 1
+    load_query_vector r8, 2, query_mask
 
     ; Load current best distance
     vbroadcastss ymm10, DWORD PTR [flt_max]
@@ -181,19 +207,44 @@ tail_end:
 
 done:
 ; Epilog
-    vmovaps xmm6, [rbp + 64 + 16]
-    vmovaps xmm7, [rbp + 64]
-    add rsp, 64 + 2 * 16
+    restore_xmm_registers 64, xmm6, xmm7, xmm8
+    add rsp, stack_size
     pop rbp
 
     ret
 
-    ALIGN 16
-    query_mask DWORD -1, -1, -1, 0
-    flt_max DWORD 07f7fffffr
 wenda_find_closest_l2_avx2 ENDP
 
-; Procedure for replacing top element
+; Main procedure for finding k closest points to query vector,
+;
+; Arguments:
+;   - rcx: address of array of points, index pairs
+;   - rdx: number of points in array
+;   - r8: address of query vector
+;   - r9: 
+wenda_insert_closest_l2_avx2 PROC PUBLIC FRAME
+    stack_size EQU 64 + 3 * 16
+
+    push rbp
+.pushreg rbp
+    sub rsp, stack_size ; reserve space for local variables and non-volatile registers
+.allocstack stack_size
+    mov rbp, rsp
+.setframe rbp, 0
+    save_xmm_registers 64, xmm6, xmm7, xmm8
+.endprolog
+
+    indices_buffer EQU rbp
+    distances_buffer EQU rbp + 32
+
+    load_query_vector r8, 2, query_mask
+wenda_insert_closest_l2_avx2 ENDP
+
+ALIGN 16
+query_mask DWORD -1, -1, -1, 0
+flt_max DWORD 07f7fffffr
+
+; Procedure for updating root in tournament tree
 ; C prototype: void tournament_tree_update_root(tournament_tree_t *tree, uint32_t index, float element_value uint32_t element_idx)
 ; 
 ; Arguments are expected as follows:
@@ -203,5 +254,22 @@ wenda_find_closest_l2_avx2 ENDP
 ;   r9d: index of the inserted element
 tournament_tree_update_root PROC PUBLIC
     tournament_tree_update_root_m rcx, edx, r9d, r10d, r8d, r11d
+    ret
 tournament_tree_update_root ENDP
+
+; Procedure for replacing top element in tournament tree
+; C prototype: void tournament_tree_replace_top(tournament_tree_t *tree, float element_value uint32_t element_idx)
+; Argumens are expected as follows:
+;   rcx: address of tournament tree
+;   xmm0: first value of the inserted element
+;   r8d: second value of the inserted element
+tournament_tree_replace_top PROC PUBLIC
+    mov edx, DWORD PTR [rcx + 8]
+    lea eax, [edx + 2 * edx]
+    vmovss DWORD PTR[rcx + 4 * rax], xmm0
+    mov DWORD PTR[rcx + 4 * rax + 4], r8d
+
+    tournament_tree_update_root_m rcx, edx, r8d, r9d, r10d, r11d
+    ret
+tournament_tree_replace_top ENDP
 END

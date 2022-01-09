@@ -11,6 +11,9 @@ extern "C" {
 void tournament_tree_update_root(
     void *tree, uint32_t idx, float element_value, uint32_t element_idx);
 
+void tournament_tree_replace_top(
+    void* tree, float element_value, uint32_t element_idx);
+
 uint32_t wenda_find_closest_l2_avx2(void *positions, size_t n, float *const query);
 }
 
@@ -36,7 +39,6 @@ void update_tournament_tree_asm(
     PairTournamentTree &tree, std::pair<float, uint32_t> const &element) {
     auto &data_ = tree.data();
     auto insert_idx = data_[0].second;
-    auto winner_value = data_[0].first;
     data_[insert_idx] = {element, insert_idx};
     tournament_tree_update_root(data_.data(), insert_idx, element.first, element.second);
 }
@@ -65,6 +67,30 @@ TEST_P(TournamentTreeAsmRandomTest, TestUpdateFromRoot) {
     for (auto const &u : updates) {
         tree.replace_top(u);
         update_tournament_tree_asm(tree2, u);
+        ASSERT_EQ(tree.data(), tree2.data());
+    }
+}
+
+TEST_P(TournamentTreeAsmRandomTest, TestReplaceTop) {
+    int tree_size;
+    int num_updates;
+
+    std::tie(tree_size, num_updates) = GetParam();
+
+    PairTournamentTree tree(tree_size);
+    PairTournamentTree tree2(tree);
+
+    std::vector<std::pair<float, uint32_t>> updates(num_updates);
+    std::mt19937_64 rng(42);
+    std::normal_distribution<float> dist(0.0f, 1.0f);
+
+    for (int i = 0; i < num_updates; ++i) {
+        updates[i] = {dist(rng), i};
+    }
+
+    for (auto const &u : updates) {
+        tree.replace_top(u);
+        tournament_tree_replace_top(tree2.data().data(), u.first, u.second);
         ASSERT_EQ(tree.data(), tree2.data());
     }
 }

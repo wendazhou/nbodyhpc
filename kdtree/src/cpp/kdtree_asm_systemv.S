@@ -1,14 +1,14 @@
 .intel_syntax noprefix
 
-# Implementation of replacing top element in tournament tree
+# Implementation of updating root element in tournament tree
 #   Specialized for a tournament tree of float, uint32_t pairs
 #   with comparison only induced by the first element.
 #
 # Arguments are expected as follows:
 #   rdi: address of tournament tree
 #   rsi: index at which element is placed
-#   xmm0: value of the inserted element
-#   edx: index of the inserted element
+#   xmm0: first value of the inserted element
+#   edx: second value of the inserted element
 .type tournament_tree_update_root, @function
 .global tournament_tree_update_root
 tournament_tree_update_root:
@@ -54,6 +54,22 @@ tournament_tree_update_root:
     mov DWORD PTR[rdi + 4], edx
     mov DWORD PTR[rdi + 8], ecx
     ret
+
+
+# Implementation of replacing top element in tournament tree
+# Arguments are expected as follows:
+#   rdi: address of tournament tree
+#   xmm0: first value of the inserted element
+#   esi: second value of the inserted element
+.type tournament_tree_replace_top, @function
+.global tournament_tree_replace_top
+tournament_tree_replace_top
+    mov edx, esi
+    mov esi, DWORD PTR[rdi + 8]
+    lea eax, [esi + 2 * esi]
+    vmovss DWORD PTR[rdi + 4 * rax], xmm0
+    mov DWORD PTR[rdi + 4 * rax + 4], edx
+    jmp tournament_tree_update_root ; tail call
 
 .type wenda_find_closest_l2_avx2, @function
 .global wenda_find_closest_l2_avx2
