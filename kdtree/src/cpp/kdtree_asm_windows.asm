@@ -123,15 +123,15 @@ ENDM
 wenda_find_closest_l2_avx2 PROC PUBLIC FRAME
     ; Stack-based variables
 
-    stack_size EQU 64 + 3 * 16
+    stack_size_find_closest EQU 64 + 4 * 16
 
     push rbp
 .pushreg rbp
-    sub rsp, stack_size ; reserve space for local variables and non-volatile registers
-.allocstack stack_size
+    sub rsp, stack_size_find_closest ; reserve space for local variables and non-volatile registers
+.allocstack stack_size_find_closest
     mov rbp, rsp
 .setframe rbp, 0
-    save_xmm_registers 64, xmm6, xmm7, xmm8
+    save_xmm_registers 64, xmm6, xmm7, xmm8, xmm9
 .endprolog
 
     indices_buffer EQU rbp
@@ -141,7 +141,7 @@ wenda_find_closest_l2_avx2 PROC PUBLIC FRAME
     load_query_vector r8, 2, query_mask
 
     ; Load current best distance
-    vbroadcastss ymm10, DWORD PTR [flt_max]
+    vbroadcastss ymm9, DWORD PTR [flt_max]
 
     ; Load end pointer into rdx
     lea rdx, [rdx * 8]
@@ -152,7 +152,7 @@ loop_start:
 
     vmovups YMMWORD PTR [indices_buffer], ymm7
 
-    vcmpltps ymm7, ymm3, ymm10
+    vcmpltps ymm7, ymm3, ymm9
     vmovmskps eax, ymm7
     test eax, eax
     je loop_end
@@ -165,10 +165,10 @@ scalar_insert_start:
 
     ; perform scalar insertion
     vmovss xmm0, DWORD PTR [distances_buffer + 4 * r10]
-    ucomiss xmm0, xmm10
+    ucomiss xmm0, xmm9
     jae scalar_insert_end
 
-    vbroadcastss ymm10, xmm0
+    vbroadcastss ymm9, xmm0
     mov r11d, [indices_buffer + 4 * r10]
 scalar_insert_end:
     shr eax, 1
@@ -190,7 +190,7 @@ loop_end:
     je done
 
 ; Tail loop (remainder)
-    vmovaps xmm5, xmm10
+    vmovaps xmm5, xmm9
 tail_start:
     vmovups xmm3, XMMWORD PTR [rcx]
     vsubps xmm3, xmm3, xmm2
@@ -207,8 +207,8 @@ tail_end:
 
 done:
 ; Epilog
-    restore_xmm_registers 64, xmm6, xmm7, xmm8
-    add rsp, stack_size
+    restore_xmm_registers 64, xmm6, xmm7, xmm8, xmm9
+    add rsp, stack_size_find_closest
     pop rbp
 
     ret
@@ -268,8 +268,7 @@ tournament_tree_replace_top PROC PUBLIC
     lea eax, [edx + 2 * edx]
     vmovss DWORD PTR[rcx + 4 * rax], xmm0
     mov DWORD PTR[rcx + 4 * rax + 4], r8d
-
-    tournament_tree_update_root_m rcx, edx, r8d, r9d, r10d, r11d
-    ret
+    mov r9d, r8d
+    jmp tournament_tree_update_root ; tail call
 tournament_tree_replace_top ENDP
 END
