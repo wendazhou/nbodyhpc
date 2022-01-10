@@ -44,7 +44,7 @@ void update_tournament_tree_asm(
 
 } // namespace
 
-class TournamentTreeAsmRandomTest : public ::testing::TestWithParam<std::pair<int, int>> {};
+class TournamentTreeAsmRandomTest : public ::testing::TestWithParam<std::tuple<int, int>> {};
 
 TEST_P(TournamentTreeAsmRandomTest, TestUpdateFromRoot) {
     int tree_size;
@@ -96,16 +96,22 @@ TEST_P(TournamentTreeAsmRandomTest, TestReplaceTop) {
 
 INSTANTIATE_TEST_SUITE_P(
     TournamentTreeAsm, TournamentTreeAsmRandomTest,
-    ::testing::Values(
-        std::pair<int, int>{4, 1}, std::pair<int, int>{4, 2}, std::pair<int, int>{4, 4},
-        std::pair<int, int>{4, 8}, std::pair<int, int>{13, 1}, std::pair<int, int>{13, 5},
-        std::pair<int, int>{13, 27}));
+    ::testing::Combine(
+        ::testing::Values(1, 4, 13),
+        ::testing::Values(1, 2, 3, 4, 8, 16, 27, 100)
+    ));
 
-TEST(InserterAsm, FindClosest) {
+class FindClosestAsmTest : public ::testing::TestWithParam<int> {
+  public:
+    std::vector<uint32_t> seeds_ = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
+};
+
+TEST_P(FindClosestAsmTest, FindClosest) {
     wenda::kdtree::L2Distance distance;
+    auto length = GetParam();
 
-    for (int seed : {42, 43, 44, 45}) {
-        auto positions = wenda::kdtree::make_random_position_and_index(128, seed);
+    for (int seed : seeds_) {
+        auto positions = wenda::kdtree::make_random_position_and_index(length, seed);
         std::array<float, 3> query = {0.5f, 0.5f, 0.5f};
 
         auto closest_idx_asm =
@@ -119,68 +125,30 @@ TEST(InserterAsm, FindClosest) {
             [&](wenda::kdtree::PositionAndIndex const &p) {
                 return std::make_pair(distance(p.position, query), p.index);
             });
+
         ASSERT_EQ(result.second, closest_idx_asm);
     }
 }
 
-TEST(InserterAsm, FindClosestTail) {
+INSTANTIATE_TEST_SUITE_P(
+    FindClosestAsm, FindClosestAsmTest,
+    ::testing::Values(1, 2, 3, 5, 7, 8, 15, 16, 113, 127, 128, 230));
+
+class InserterAsmTest : public ::testing::TestWithParam<std::tuple<int, int>> {
+  public:
+    std::vector<uint32_t> seeds_ = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
+};
+
+TEST_P(InserterAsmTest, InsertL2) {
+    int num_closest;
+    int num_positions;
+
+    std::tie(num_closest, num_positions) = GetParam();
+
     wenda::kdtree::L2Distance distance;
 
-    for (int seed : {42, 43, 44, 45}) {
-        auto positions = wenda::kdtree::make_random_position_and_index(16 + (seed % 8), seed);
-        std::array<float, 3> query = {0.5f, 0.5f, 0.5f};
-
-        auto closest_idx_asm =
-            wenda_find_closest_l2_avx2(positions.data(), positions.size(), query.data());
-
-        auto result = std::transform_reduce(
-            positions.begin(),
-            positions.end(),
-            std::pair<float, uint32_t>{std::numeric_limits<float>::max(), -1},
-            [](auto const &p1, auto const &p2) { return p1.first < p2.first ? p1 : p2; },
-            [&](wenda::kdtree::PositionAndIndex const &p) {
-                return std::make_pair(distance(p.position, query), p.index);
-            });
-        ASSERT_EQ(result.second, closest_idx_asm);
-    }
-}
-
-TEST(InserterAsm, FindClosestMultiple) {
-    wenda::kdtree::L2Distance distance;
-
-    for (int seed : {42, 43, 44, 45}) {
-        auto positions = wenda::kdtree::make_random_position_and_index(256, seed);
-        std::array<float, 3> query = {0.5f, 0.5f, 0.5f};
-
-        auto closest_idx_asm_1 = wenda_find_closest_l2_avx2(positions.data(), 128, query.data());
-
-        auto closest_idx_asm_2 =
-            wenda_find_closest_l2_avx2(positions.data() + 128, 128, query.data());
-
-        auto result = std::transform_reduce(
-            positions.begin(),
-            positions.end(),
-            std::pair<float, uint32_t>{std::numeric_limits<float>::max(), -1},
-            [](auto const &p1, auto const &p2) { return p1.first < p2.first ? p1 : p2; },
-            [&](wenda::kdtree::PositionAndIndex const &p) {
-                return std::make_pair(distance(p.position, query), p.index);
-            });
-
-        if (result.second < 128) {
-            ASSERT_EQ(result.second, closest_idx_asm_1);
-        } else {
-            ASSERT_EQ(result.second, closest_idx_asm_2);
-        }
-    }
-}
-
-TEST(InserterAsm, InsertL2Bulk) {
-    const uint32_t num_closest = 16;
-    wenda::kdtree::L2Distance distance;
-
-    for (int seed : {42, 43, 44, 45}) {
-
-        auto positions = wenda::kdtree::make_random_position_and_index(128, seed);
+    for (int seed : seeds_) {
+        auto positions = wenda::kdtree::make_random_position_and_index(num_positions, seed);
         auto tree = PairTournamentTree(num_closest);
         auto tree2 = PairTournamentTree(num_closest);
 
@@ -208,6 +176,23 @@ TEST(InserterAsm, InsertL2Bulk) {
         std::sort(result.begin(), result.end());
         std::sort(result2.begin(), result2.end());
 
+        // Drop values for which there was no finite value.
+        auto it_inf_result = std::find_if(result.begin(), result.end(), [](auto const &p) {
+            return p.first == std::numeric_limits<float>::max();
+        });
+        result.resize(std::distance(result.begin(), it_inf_result));
+
+        auto it_inf_result2 = std::find_if(result2.begin(), result2.end(), [](auto const &p) {
+            return p.first == std::numeric_limits<float>::max();
+        });
+        result2.resize(std::distance(result2.begin(), it_inf_result2));
+
         ASSERT_EQ(result, result2);
     }
 }
+
+INSTANTIATE_TEST_SUITE_P(
+    InserterAsm, InserterAsmTest,
+    ::testing::Combine(
+        ::testing::Values(1, 3, 7, 8, 16, 20),
+        ::testing::Values(1, 3, 6, 7, 8, 15, 16, 23, 128, 341)));

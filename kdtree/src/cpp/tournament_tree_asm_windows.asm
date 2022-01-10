@@ -81,14 +81,14 @@ ENDM
 ;
 tournament_tree_update_root_fused_m MACRO ptr_tree, reg_index, reg_element_idx, reg_tmp1
     LOCAL loop_start, loop_check, finish
-    cmp reg_index, 1
-    jbe finish
 
     ; Load initial index of element into ecx
     mov reg_tmp1, reg_index
     shl reg_tmp1, 32
     or reg_element_idx, reg_tmp1
 
+    cmp reg_index, 1
+    jbe finish
 loop_start:
     shr reg_index, 1
 
@@ -137,14 +137,14 @@ ENDM
 ;
 tournament_tree_update_root_branchless_m MACRO ptr_tree, reg_index, reg_element_idx, reg_tmp1, reg_tmp2
     LOCAL loop_start, loop_check, finish
-    cmp reg_index, 1
-    jbe finish
 
     ; Load initial index of element into ecx
     mov reg_tmp1, reg_index
     shl reg_tmp1, 32
     or reg_element_idx, reg_tmp1
 
+    cmp reg_index, 1
+    jbe finish
 loop_start:
     shr reg_index, 1
 
