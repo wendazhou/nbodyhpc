@@ -1,6 +1,6 @@
 .code
 
-; Implementation of replacing top element in tournament tree
+; Implementation of updating the path to the root element in tournament tree.
 ;   Specialized for a tournament tree of float, uint32_t pairs
 ;   with comparison only induced by the first element.
 ;
@@ -60,6 +60,60 @@ finish:
     movss DWORD PTR[ptr_tree], xmm0
     mov DWORD PTR[ptr_tree + 4], reg_element_idx
     mov DWORD PTR[ptr_tree + 8], reg_tmp_winner_idx
+ENDM
+
+; Implementation of updating the path to the root element in tournament tree.
+;   Specialized for a tournament tree of float, uint32_t pairs with comparison
+;   only induced by the first element. This implementation is uses a single 64-bit operand.
+;   Note: due to the size of the records, this will cause an unaligned access about half
+;       of the time. Better packing for the records could improve performance here.
+;
+; For flexibility, this is a macro, which requires the following
+; arguments:
+;   - ptr_tree: MACHINE register containing the address of the tree
+;   - reg_index: QWORD register containing the index of the element to replace
+;   - reg_element_index: QWORD register containing the element index value
+;   - reg_tmp1: (temporary) QWORD register
+;
+; Arguments marked temporary do not need to be set to a particular value.
+; All arguments are clobbered by the macro, except for ptr_tree which retains its original value.
+; Additionally, rax, xmm0 and xmm1 are clobbered by the macro.
+;
+tournament_tree_update_root_fused_m MACRO ptr_tree, reg_index, reg_element_idx, reg_tmp1
+    LOCAL loop_start, loop_check, finish
+    cmp reg_index, 1
+    jbe finish
+
+    ; Load initial index of element into ecx
+    mov reg_tmp1, reg_index
+    shl reg_tmp1, 32
+    or reg_element_idx, reg_tmp1
+
+loop_start:
+    shr reg_index, 1
+
+    ; Compute address at ptr_tree + 12 * reg_index
+    lea rax, [reg_index + 2 * reg_index]
+    lea rax, [ptr_tree + 4 * rax]
+
+    movss xmm1, DWORD PTR [rax]
+    ucomiss xmm1, xmm0
+    jbe loop_check
+
+    ; Store current winner as loser, load stored winner
+    mov reg_tmp1, QWORD PTR[rax + 4]
+    mov QWORD PTR [rax + 4], reg_element_idx
+    mov reg_element_idx, reg_tmp1
+
+    movss DWORD PTR [rax], xmm0
+    movss xmm0, xmm1
+
+loop_check:
+    cmp reg_index, 1
+    ja loop_start
+finish:
+    movss DWORD PTR[ptr_tree], xmm0
+    mov QWORD PTR[ptr_tree + 4], reg_element_idx
 ENDM
 
 ; Macro for swapping top element in the tree

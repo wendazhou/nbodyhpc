@@ -204,7 +204,8 @@ scalar_insert_start:
     ; update tournament tree with new best
     mov esi, [indices_buffer + r10]
     tournament_tree_swap_top_m r9, edi, xmm0, esi, r11
-    tournament_tree_update_root_m r9, edi, esi, r11d, r12d, r13d
+    ; tournament_tree_update_root_m r9, edi, esi, r11d, r12d, r13d
+    tournament_tree_update_root_fused_m r9, rdi, rsi, r11
 
     ; reload top value, xmm0 is updated by the tournament tree macros
     vbroadcastss ymm9, xmm0
