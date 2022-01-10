@@ -21,6 +21,11 @@ ENDM
 
 ; Macro for loading and computing 
 compute_l2 MACRO query_reg
+    vmovups ymm3, YMMWORD PTR [rcx]
+    vmovups ymm4, YMMWORD PTR [rcx + 32]
+    vmovups ymm5, YMMWORD PTR [rcx + 64]
+    vmovups ymm6, YMMWORD PTR [rcx + 96]
+
     vpunpckhdq ymm7, ymm3, ymm5
     vpunpckhdq ymm8, ymm4, ymm6
     vpunpckhdq ymm7, ymm7, ymm8
@@ -51,6 +56,41 @@ load_query_vector MACRO reg_source, reg_idx, query_mask
     vmovdqa query_reg_xmm, XMMWORD PTR [query_mask]
     vmaskmovps query_reg_xmm, query_reg_xmm, XMMWORD PTR [reg_source]
     vinsertf128 query_reg_ymm, query_reg_ymm, query_reg_xmm, 1
+ENDM
+
+compare_distances MACRO mask_reg
+    vmovdqa YMMWORD PTR [indices_buffer], ymm7
+
+    vcmpltps ymm7, ymm3, ymm9
+    vmovmskps mask_reg, ymm7
+    test mask_reg, mask_reg
+    je loop_end
+
+    vmovaps YMMWORD PTR [distances_buffer], ymm3
+    xor r10, r10
+ENDM
+
+; Tests whether scalar operations are required for this iteration.
+;    This macro checks whether the mask_reg bit is set, and if so,
+;    loads the computed distance and checks whether it is smaller
+;    than the current best. If any checks fail, it jumps to end_label.
+scalar_insert_test MACRO mask_reg, end_label
+    test mask_reg, 1
+    je end_label
+
+    ; perform scalar insertion
+    vmovss xmm0, DWORD PTR [distances_buffer + r10]
+    ucomiss xmm0, xmm9
+    jae end_label
+ENDM
+
+; Tests whether there are any remaining scalar elements to process,
+; and if so, shifts the mask register, increments r10, and jumps to start_label.
+scalar_insert_loop MACRO mask_reg, start_label
+    shr mask_reg, 1
+    add r10, 4
+    test mask_reg, mask_reg
+    jne start_label
 ENDM
 
 
@@ -94,38 +134,15 @@ wenda_find_closest_l2_avx2 PROC PUBLIC FRAME
     cmp rcx, rdx
     jae tail_loop
 loop_start:
-    vmovups ymm3, YMMWORD PTR [rcx]
-    vmovups ymm4, YMMWORD PTR [rcx + 32]
-    vmovups ymm5, YMMWORD PTR [rcx + 64]
-    vmovups ymm6, YMMWORD PTR [rcx + 96]
-
     compute_l2 ymm2
-
-    vmovdqa YMMWORD PTR [indices_buffer], ymm7
-
-    vcmpltps ymm7, ymm3, ymm9
-    vmovmskps eax, ymm7
-    test eax, eax
-    je loop_end
-
-    vmovaps YMMWORD PTR [distances_buffer], ymm3
-    xor r10, r10
+    compare_distances eax
 scalar_insert_start:
-    test eax, 1
-    je scalar_insert_end
-
-    ; perform scalar insertion
-    vmovss xmm0, DWORD PTR [distances_buffer + 4 * r10]
-    ucomiss xmm0, xmm9
-    jae scalar_insert_end
+    scalar_insert_test eax, scalar_insert_end
 
     vbroadcastss ymm9, xmm0
-    mov r11d, [indices_buffer + 4 * r10]
+    mov r11d, [indices_buffer + r10]
 scalar_insert_end:
-    shr eax, 1
-    inc r10
-    test eax, eax
-    jne scalar_insert_start
+    scalar_insert_loop eax, scalar_insert_start
 loop_end:
     lea rcx, [rcx + 128]
     cmp rcx, rdx
@@ -208,31 +225,10 @@ wenda_insert_closest_l2_avx2 PROC PUBLIC FRAME
     jae tail_loop
 
 loop_start:
-    vmovups ymm3, YMMWORD PTR [rcx]
-    vmovups ymm4, YMMWORD PTR [rcx + 32]
-    vmovups ymm5, YMMWORD PTR [rcx + 64]
-    vmovups ymm6, YMMWORD PTR [rcx + 96]
-
     compute_l2 ymm2
-
-    vmovdqa YMMWORD PTR [indices_buffer], ymm7
-
-    vcmpltps ymm7, ymm3, ymm9
-    vmovmskps ebx, ymm7
-    test ebx, ebx
-    je loop_end
-
-    vmovaps YMMWORD PTR [distances_buffer], ymm3
-    xor r10, r10
-
+    compare_distances ebx
 scalar_insert_start:
-    test ebx, 1
-    je scalar_insert_end
-
-    ; test for current best
-    vmovss xmm0, DWORD PTR [distances_buffer + r10]
-    ucomiss xmm0, xmm9
-    jae scalar_insert_end
+    scalar_insert_test ebx, scalar_insert_end
 
     ; update tournament tree with new best
     mov esi, [indices_buffer + r10]
@@ -242,11 +238,7 @@ scalar_insert_start:
     ; reload top value, xmm0 is updated by the tournament tree macros
     vbroadcastss ymm9, xmm0
 scalar_insert_end:
-    shr ebx, 1
-    add r10, 4
-    test ebx, ebx
-    jne scalar_insert_start
-
+    scalar_insert_loop ebx, scalar_insert_start
 loop_end:
     lea rcx, [rcx + 128]
     cmp rcx, rdx
