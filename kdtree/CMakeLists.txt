@@ -64,7 +64,7 @@ add_library(kdtree STATIC src/cpp/kdtree.cpp)
 target_link_libraries(kdtree PRIVATE Threads::Threads kdtree_asm)
 target_compile_options(kdtree PUBLIC $<$<AND:$<CONFIG:DEBUG>,$<COMPILE_LANGUAGE:C,CXX>>:-fsanitize=address>)
 target_link_options(kdtree PUBLIC $<$<CONFIG:DEBUG>:-fsanitize=address>)
-target_include_directories(kdtree PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/third_party/misc)
+target_include_directories(kdtree PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/third_party/misc ${CMAKE_CURRENT_SOURCE_DIR}/third_party/random123/include)
 set_property(TARGET kdtree PROPERTY POSITION_INDEPENDENT_CODE ON)
 
 if(MSVC)
@@ -84,7 +84,7 @@ pybind11_add_module(_impl src/cpp/pybind.cpp)
 target_link_libraries(_impl PRIVATE kdtree)
 
 if(BUILD_TESTING)
-    add_executable(kdtree_test src/cpp/test.cpp src/cpp/test_opt.cpp src/cpp/test_asm.cpp)
+    add_executable(kdtree_test src/cpp/test.cpp src/cpp/test_opt.cpp src/cpp/test_asm.cpp src/cpp/test_inserters.cpp)
     target_link_libraries(kdtree_test PRIVATE kdtree gtest_main)
     target_include_directories(kdtree_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/third_party/random123/include)
 

@@ -11,7 +11,7 @@
 #include "kdtree.hpp"
 #include "kdtree_opt.hpp"
 #include "kdtree_opt_asm.hpp"
-#include "kdtree_utils.h"
+#include "kdtree_utils.hpp"
 #include "tournament_tree.hpp"
 
 namespace kdt = wenda::kdtree;

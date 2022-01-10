@@ -7,8 +7,7 @@
 #include <gtest/gtest.h>
 
 #include "kdtree.hpp"
-#include "kdtree_utils.h"
-#include "utils.hpp"
+#include "kdtree_utils.hpp"
 
 namespace {
 

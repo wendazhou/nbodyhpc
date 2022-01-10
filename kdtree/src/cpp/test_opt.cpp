@@ -8,8 +8,7 @@
 
 #include "kdtree.hpp"
 #include "kdtree_opt.hpp"
-#include "kdtree_utils.h"
-#include "utils.hpp"
+#include "kdtree_utils.hpp"
 #include "tournament_tree.hpp"
 
 using namespace wenda::kdtree;

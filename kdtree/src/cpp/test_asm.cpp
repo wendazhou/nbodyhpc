@@ -4,7 +4,7 @@
 #include <gtest/gtest.h>
 
 #include "kdtree.hpp"
-#include "kdtree_utils.h"
+#include "kdtree_utils.hpp"
 #include "tournament_tree.hpp"
 
 extern "C" {

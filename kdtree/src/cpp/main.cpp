@@ -82,7 +82,7 @@ BenchmarkResult benchmark_lookup_same(
     auto tree_query_end_t = clock.now();
 
     if (total_distance != 0) {
-        std::cout << "Total distance was not 0!" << std::endl;
+        std::cout << "Total distance was not 0! Got instead: " << total_distance << std::endl;
     }
 
     return {
