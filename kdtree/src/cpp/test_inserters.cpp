@@ -38,25 +38,26 @@ std::vector<std::pair<float, uint32_t>> find_nearest_naive(
     return result;
 }
 
-template <template <typename, typename> typename InserterT> struct InserterHolder {
-    template <typename D, typename Q> using Inserter = InserterT<D, Q>;
+template <template <typename, typename> typename Inserter> struct InserterL2Holder {
+    typedef std::pair<float, uint32_t> result_t;
+    typedef kdt::detail::KDTreeQuery<
+        kdt::L2Distance, kdt::TournamentTree<result_t, kdt::PairLessFirst>,
+        Inserter>
+        query_t;
 };
 
-using Inserters = ::testing::Types<
-    InserterHolder<kdt::InsertShorterDistanceVanilla>,
-    InserterHolder<kdt::InsertShorterDistanceAVX>,
-    InserterHolder<kdt::InsertShorterDistanceUnrolled4>,
-    InserterHolder<kdt::InsertShorterDistanceAsmAvx2>>;
+using InsertersL2 = ::testing::Types<
+    InserterL2Holder<kdt::InsertShorterDistanceVanilla>,
+    InserterL2Holder<kdt::InsertShorterDistanceAVX>,
+    InserterL2Holder<kdt::InsertShorterDistanceUnrolled4>,
+    InserterL2Holder<kdt::InsertShorterDistanceAsmAvx2>>;
 
 } // namespace
 
 template <typename InserterHolder> class KDTreeRandomTestInserterL2 : public ::testing::Test {
   public:
     typedef std::pair<float, uint32_t> result_t;
-    typedef kdt::detail::KDTreeQuery<
-        kdt::L2Distance, kdt::TournamentTree<result_t, kdt::PairLessFirst>,
-        typename InserterHolder::Inserter>
-        query_t;
+    typedef typename InserterHolder::query_t query_t;
     kdt::L2Distance distance_;
 
     // Dummy pointers to access the defined type aliases in test functions through decltype
@@ -100,4 +101,4 @@ TYPED_TEST_P(KDTreeRandomTestInserterL2, BuildAndFindNearest) {
 }
 
 REGISTER_TYPED_TEST_SUITE_P(KDTreeRandomTestInserterL2, BuildAndFindNearest);
-INSTANTIATE_TYPED_TEST_SUITE_P(TestInserterL2, KDTreeRandomTestInserterL2, Inserters);
+INSTANTIATE_TYPED_TEST_SUITE_P(TestInserterL2, KDTreeRandomTestInserterL2, InsertersL2);

@@ -110,7 +110,7 @@ tournament_tree_replace_top:
 .endm
 
 .macro load_query_vector
-    vmovdqa xmm2, XMMWORD PTR [query_mask]
+    vmovdqa xmm2, XMMWORD PTR [rip + query_mask]
     vmaskmovps xmm2, xmm2, XMMWORD PTR [rdx]
     vinsertf128 ymm2, ymm2, xmm2, 1
 .endm
@@ -219,7 +219,7 @@ wenda_find_closest_l2_avx2:
     and rsp, -32
 
     load_query_vector
-    vbroadcastss ymm10, DWORD PTR [flt_max]
+    vbroadcastss ymm10, DWORD PTR [rip + flt_max]
 
     lea rsi, [rsi * 8]
     lea rsi, [rdi + rsi * 2 - 7 * 16]
