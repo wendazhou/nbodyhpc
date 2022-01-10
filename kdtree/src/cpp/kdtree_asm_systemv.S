@@ -85,7 +85,7 @@ tournament_tree_replace_top:
     tournament_tree_swap_top_m rdi, esi, xmm0, edx, rax
     jmp tournament_tree_update_root # tail call
 
-.macro compute_l2
+.macro compute_l2 out_reg = ymm3
     vpunpckhdq ymm7, ymm3, ymm5
     vpunpckhdq ymm8, ymm4, ymm6
     vpunpckhdq ymm7, ymm7, ymm8
@@ -102,7 +102,7 @@ tournament_tree_replace_top:
 
     vaddps ymm3, ymm3, ymm4
     vaddps ymm5, ymm5, ymm6
-    vaddps ymm3, ymm3, ymm5
+    vaddps \out_reg, ymm3, ymm5
 .endm
 
 .macro load_query_vector
@@ -139,44 +139,56 @@ wenda_insert_closest_l2_avx2:
     # Check if main loop required
     cmp rdi, rsi
     jae 4f
-0:
+
+    # Load first iteration data
     vmovups ymm3, YMMWORD PTR [rdi]
     vmovups ymm4, YMMWORD PTR [rdi + 32]
     vmovups ymm5, YMMWORD PTR [rdi + 64]
     vmovups ymm6, YMMWORD PTR [rdi + 96]
 
-    compute_l2
-    vmovdqa YMMWORD PTR [rsp + indices_buffer_offset], ymm7
+0:
+    # Compute l2 distance for each pair, store results in ymm11. Indices are also extracted and stored in ymm7.
+    compute_l2 ymm11
 
-    vcmpltps ymm7, ymm3, ymm10
-    vmovmskps ebx, ymm7
+    vcmpltps ymm8, ymm11, ymm10 # Compute pointwise comparison of distances to current best
+    vmovmskps ebx, ymm8 # Store comparison result in ebx
+
+    lea rdi, [rdi + 128] # Compute pointer for next iteration
+    cmp rdi, rsi
+    jae 6f # Skip loading next iteration
+
+    # Load next iteration data
+    vmovups ymm3, YMMWORD PTR [rdi]
+    vmovups ymm4, YMMWORD PTR [rdi + 32]
+    vmovups ymm5, YMMWORD PTR [rdi + 64]
+    vmovups ymm6, YMMWORD PTR [rdi + 96]
+6:
     test ebx, ebx
-    je 1f
+    je 1f # skip scalar updates if all elements are worse than current best
 
-    vmovaps YMMWORD PTR[rsp + distances_buffer_offset], ymm3
+    vmovaps YMMWORD PTR[rsp + distances_buffer_offset], ymm11 # Save computed distances to stack
+    vmovdqa YMMWORD PTR [rsp + indices_buffer_offset], ymm7 # Save extracted indices to stack
     xor r10, r10
-
-2:
+2:  # Start scalar loop
     test ebx, 1
     je 3f
 
-    vmovss xmm0, DWORD PTR [rsp + distances_buffer_offset + 4 * r10]
+    # Load distance from stack
+    vmovss xmm0, DWORD PTR [rsp + distances_buffer_offset + r10]
     ucomiss xmm0, xmm10
     jae 3f
 
-    mov r11d, DWORD PTR[rsp + indices_buffer_offset + 4 * r10]
+    mov r11d, DWORD PTR[rsp + indices_buffer_offset + r10]
     tournament_tree_swap_top_m rcx, r12d, xmm0, r11d, rax
     tournament_tree_update_root_m rcx, r12, r11, r8, r9
 
     vbroadcastss ymm10, xmm0
-3:
+3:  # Test scalar loop
     shr ebx, 1
-    inc r10
+    add r10, 4
     test ebx, ebx
     jne 2b
-
-1:
-    lea rdi, [rdi + 128]
+1:  # Test main vectorized loop
     cmp rdi, rsi
     jb 0b
 
