@@ -54,7 +54,13 @@ load_query_vector MACRO reg_source, reg_idx, query_mask
 ENDM
 
 
-; Find index of element closest to given query in array
+; Procedure for finding the closest element in positions to given query
+; C prototype: void find_closest_element(const char* positions, size_t n, const float* query)
+;
+; Arguments:
+;   - rcx: pointer to the positions array
+;   - rdx: length of positions array
+;   - r8: pointer to query vector
 wenda_find_closest_l2_avx2 PROC PUBLIC FRAME
     ; Stack-based variables
     stack_size = 64 + 4 * 16 + 16
@@ -64,7 +70,7 @@ wenda_find_closest_l2_avx2 PROC PUBLIC FRAME
     sub rsp, stack_size ; reserve space for local variables and non-volatile registers
 .allocstack stack_size
 .setframe rsp, 0
-    save_xmm_registers rsp, 64, xmm6, xmm7, xmm8, xmm9
+    save_xmm_registers rsp, 64 + 16, xmm6, xmm7, xmm8, xmm9
 .endprolog
 
     ; Align rbp to 32-byte boundary.
@@ -158,7 +164,7 @@ tail_loop_start:
     ucomiss xmm3, xmm5
     jae tail_end
 
-    vbroadcastss xmm5, xmm3
+    vmovaps xmm5, xmm3
     mov eax, DWORD PTR[rcx + 12]
 tail_end:
     add rcx, 16
@@ -167,10 +173,10 @@ tail_end:
 
 done:
 ; Epilog
-    restore_xmm_registers rsp, 64, xmm6, xmm7, xmm8, xmm9
+    vzeroupper
+    restore_xmm_registers rsp, 64 + 16, xmm6, xmm7, xmm8, xmm9
     add rsp, stack_size
     pop rbp
-
     ret
 
 wenda_find_closest_l2_avx2 ENDP
@@ -182,6 +188,8 @@ wenda_find_closest_l2_avx2 ENDP
 ;   - rdx: number of points in array
 ;   - r8: address of query vector
 ;   - r9: address of the tournament tree
+; Returns:
+;   - rax: Index of the closest point
 wenda_insert_closest_l2_avx2 PROC PUBLIC FRAME
     stack_size = 64 + 4 * 16 + 16
 
@@ -192,7 +200,7 @@ wenda_insert_closest_l2_avx2 PROC PUBLIC FRAME
     sub rsp, stack_size ; reserve space for local variables and non-volatile registers
 .allocstack stack_size
 .setframe rsp, 0
-    save_xmm_registers rsp, 64, xmm6, xmm7, xmm8, xmm9
+    save_xmm_registers rsp, 64 + 16, xmm6, xmm7, xmm8, xmm9
 .endprolog
 
     ; Align rbp to 32-byte boundary
@@ -287,7 +295,8 @@ tail_end:
 
 done:
 ; epilog
-    restore_xmm_registers rsp, 64, xmm6, xmm7, xmm8, xmm9
+    restore_xmm_registers rsp, 64 + 16, xmm6, xmm7, xmm8, xmm9
+    vzeroupper
     add rsp, stack_size
     FOR reg, <r14,r13,r12,rsi,rdi,rbx,rbp>
         pop reg

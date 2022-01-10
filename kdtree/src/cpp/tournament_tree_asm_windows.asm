@@ -38,7 +38,7 @@ loop_start:
     lea rax, [reg_index + 2 * reg_index]
     lea rax, [ptr_tree + 4 * rax]
 
-    movss xmm1, DWORD PTR [rax]
+    vmovss xmm1, DWORD PTR [rax]
     ucomiss xmm1, xmm0
     jbe loop_check
 
@@ -50,14 +50,14 @@ loop_start:
     mov reg_element_idx, reg_tmp1
     mov reg_tmp_winner_idx, reg_tmp2
 
-    movss DWORD PTR [rax], xmm0
-    movss xmm0, xmm1
+    vmovss DWORD PTR [rax], xmm0
+    vmovss xmm0, xmm1
 
 loop_check:
     cmp reg_index, 1
     ja loop_start
 finish:
-    movss DWORD PTR[ptr_tree], xmm0
+    vmovss DWORD PTR[ptr_tree], xmm0
     mov DWORD PTR[ptr_tree + 4], reg_element_idx
     mov DWORD PTR[ptr_tree + 8], reg_tmp_winner_idx
 ENDM
@@ -96,7 +96,7 @@ loop_start:
     lea rax, [reg_index + 2 * reg_index]
     lea rax, [ptr_tree + 4 * rax]
 
-    movss xmm1, DWORD PTR [rax]
+    vmovss xmm1, DWORD PTR [rax]
     ucomiss xmm1, xmm0
     jbe loop_check
 
@@ -105,14 +105,14 @@ loop_start:
     mov QWORD PTR [rax + 4], reg_element_idx
     mov reg_element_idx, reg_tmp1
 
-    movss DWORD PTR [rax], xmm0
-    movss xmm0, xmm1
+    vmovss DWORD PTR [rax], xmm0
+    vmovss xmm0, xmm1
 
 loop_check:
     cmp reg_index, 1
     ja loop_start
 finish:
-    movss DWORD PTR[ptr_tree], xmm0
+    vmovss DWORD PTR[ptr_tree], xmm0
     mov QWORD PTR[ptr_tree + 4], reg_element_idx
 ENDM
 
@@ -153,7 +153,7 @@ loop_start:
     lea rax, [ptr_tree + 4 * rax]
 
     ; Load loser in current node
-    movss xmm1, DWORD PTR [rax]
+    vmovss xmm1, DWORD PTR [rax]
 
     ; Compare with current winner
     ucomiss xmm1, xmm0
@@ -161,7 +161,7 @@ loop_start:
     ; Branchless assign xmm0 to be winner, xmm9 to be loser
     vminss xmm9, xmm0, xmm1
     vmaxss xmm0, xmm0, xmm1
-    movss xmm1, xmm9
+    vmovaps xmm1, xmm9
 
     ; Store current winner as loser, load stored winner
     mov reg_tmp1, QWORD PTR[rax + 4]
@@ -170,13 +170,13 @@ loop_start:
     mov QWORD PTR [rax + 4], reg_tmp2
     cmova reg_element_idx, reg_tmp1
 
-    movss DWORD PTR [rax], xmm1
+    vmovss DWORD PTR [rax], xmm1
 
 loop_check:
     cmp reg_index, 1
     ja loop_start
 finish:
-    movss DWORD PTR[ptr_tree], xmm0
+    vmovss DWORD PTR[ptr_tree], xmm0
     mov QWORD PTR[ptr_tree + 4], reg_element_idx
 ENDM
 
@@ -201,10 +201,12 @@ ENDM
 ; Arguments are expected as follows:
 ;   rcx: address of tournament tree
 ;   edx: index at which element is placed
-;   xmm0: first value of the inserted element
+;   xmm2: first value of the inserted element
 ;   r9d: second value of the inserted element
 tournament_tree_update_root PROC PUBLIC
+    vmovaps xmm0, xmm2
     tournament_tree_update_root_branchless_m rcx, rdx, r9, r8, r10
+    vzeroupper
     ret
 tournament_tree_update_root ENDP
 
@@ -212,10 +214,11 @@ tournament_tree_update_root ENDP
 ; C prototype: void tournament_tree_replace_top(tournament_tree_t *tree, float element_value uint32_t element_idx)
 ; Argumens are expected as follows:
 ;   rcx: address of tournament tree
-;   xmm0: first value of the inserted element
+;   xmm1: first value of the inserted element
 ;   r8d: second value of the inserted element
 tournament_tree_replace_top PROC PUBLIC
-    tournament_tree_swap_top_m rcx, edx, xmm0, r8d, rax
+    tournament_tree_swap_top_m rcx, edx, xmm1, r8d, rax
     mov r9d, r8d
+    vmovaps xmm2, xmm1
     jmp tournament_tree_update_root ; tail call
 tournament_tree_replace_top ENDP
