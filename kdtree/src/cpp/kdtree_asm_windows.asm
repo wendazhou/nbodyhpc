@@ -2,11 +2,19 @@ include <tournament_tree_asm_windows.asm>
 
 .code
 
-
-restore_xmm_registers MACRO offset: REQ, regs :VARARG
+save_xmm_registers MACRO rfp: REQ, offset: REQ, regs :VARARG
     count = 0
     FOR reg,<regs>
-        vmovaps reg, [rbp + offset + 16 * count]
+        vmovaps [rfp + offset + 16 * count], reg
+        .savexmm128 reg, offset + 16 * count
+        count = count + 1
+    ENDM
+ENDM
+
+restore_xmm_registers MACRO rfp: REQ, offset: REQ, regs :VARARG
+    count = 0
+    FOR reg,<regs>
+        vmovaps reg, [rfp + offset + 16 * count]
         count = count + 1
     ENDM
 ENDM
@@ -54,16 +62,19 @@ ENDM
 ; Find index of element closest to given query in array
 wenda_find_closest_l2_avx2 PROC PUBLIC FRAME
     ; Stack-based variables
-    stack_size = 64 + 4 * 16
+    stack_size = 64 + 4 * 16 + 16
 
     push rbp
 .pushreg rbp
     sub rsp, stack_size ; reserve space for local variables and non-volatile registers
 .allocstack stack_size
-    mov rbp, rsp
-.setframe rbp, 0
-    save_xmm_registers 64, xmm6, xmm7, xmm8, xmm9
+.setframe rsp, 0
+    save_xmm_registers rsp, 64, xmm6, xmm7, xmm8, xmm9
 .endprolog
+
+    ; Align rbp to 32-byte boundary.
+    lea rbp, [rsp + 16]
+    and rbp, -32
 
     indices_buffer EQU rbp
     distances_buffer EQU rbp + 32
@@ -81,14 +92,14 @@ wenda_find_closest_l2_avx2 PROC PUBLIC FRAME
 loop_start:
     load_and_compute_l2 ymm2
 
-    vmovups YMMWORD PTR [indices_buffer], ymm7
+    vmovdqa YMMWORD PTR [indices_buffer], ymm7
 
     vcmpltps ymm7, ymm3, ymm9
     vmovmskps eax, ymm7
     test eax, eax
     je loop_end
 
-    vmovups YMMWORD PTR [distances_buffer], ymm3
+    vmovaps YMMWORD PTR [distances_buffer], ymm3
     xor r10, r10
 scalar_insert_start:
     test eax, 1
@@ -138,7 +149,7 @@ tail_end:
 
 done:
 ; Epilog
-    restore_xmm_registers 64, xmm6, xmm7, xmm8, xmm9
+    restore_xmm_registers rsp, 64, xmm6, xmm7, xmm8, xmm9
     add rsp, stack_size
     pop rbp
 
@@ -154,7 +165,7 @@ wenda_find_closest_l2_avx2 ENDP
 ;   - r8: address of query vector
 ;   - r9: address of the tournament tree
 wenda_insert_closest_l2_avx2 PROC PUBLIC FRAME
-    stack_size = 64 + 4 * 16
+    stack_size = 64 + 4 * 16 + 16
 
     FOR reg, <rbp,rbx,rdi,rsi,r12,r13,r14>
         push reg
@@ -162,10 +173,13 @@ wenda_insert_closest_l2_avx2 PROC PUBLIC FRAME
     ENDM
     sub rsp, stack_size ; reserve space for local variables and non-volatile registers
 .allocstack stack_size
-    mov rbp, rsp
-.setframe rbp, 0
-    save_xmm_registers 64, xmm6, xmm7, xmm8, xmm9
+.setframe rsp, 0
+    save_xmm_registers rsp, 64, xmm6, xmm7, xmm8, xmm9
 .endprolog
+
+    ; Align rbp to 32-byte boundary
+    lea rbp, [rsp + 16]
+    and rbp, -32
 
     indices_buffer EQU rbp
     distances_buffer EQU rbp + 32
@@ -182,14 +196,14 @@ wenda_insert_closest_l2_avx2 PROC PUBLIC FRAME
 loop_start:
     load_and_compute_l2 ymm2
 
-    vmovups YMMWORD PTR [indices_buffer], ymm7
+    vmovdqa YMMWORD PTR [indices_buffer], ymm7
 
     vcmpltps ymm7, ymm3, ymm9
     vmovmskps ebx, ymm7
     test ebx, ebx
     je loop_end
 
-    vmovups YMMWORD PTR [distances_buffer], ymm3
+    vmovaps YMMWORD PTR [distances_buffer], ymm3
     xor r10, r10
 
 scalar_insert_start:
@@ -220,7 +234,7 @@ loop_end:
     jb loop_start
 
 ; epilog
-    restore_xmm_registers 64, xmm6, xmm7, xmm8, xmm9
+    restore_xmm_registers rsp, 64, xmm6, xmm7, xmm8, xmm9
     add rsp, stack_size
     FOR reg, <r14,r13,r12,rsi,rdi,rbx,rbp>
         pop reg

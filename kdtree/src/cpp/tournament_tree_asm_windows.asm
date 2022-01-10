@@ -195,15 +195,6 @@ tournament_tree_swap_top_m MACRO tt_reg, out_idx_reg, fv_reg, sv_reg, out_addres
     mov DWORD PTR[out_address_reg + 4], sv_reg
 ENDM
 
-save_xmm_registers MACRO offset: REQ, regs :VARARG
-    count = 0
-    FOR reg,<regs>
-        vmovaps [rbp + offset + 16 * count], reg
-        .savexmm128 reg, offset + 16 * count
-        count = count + 1
-    ENDM
-ENDM
-
 ; Procedure for updating root in tournament tree
 ; C prototype: void tournament_tree_update_root(tournament_tree_t *tree, uint32_t index, float element_value uint32_t element_idx)
 ; 
