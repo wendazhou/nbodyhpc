@@ -213,7 +213,7 @@ ENDM
 ;   xmm0: first value of the inserted element
 ;   r9d: second value of the inserted element
 tournament_tree_update_root PROC PUBLIC
-    tournament_tree_update_root_branchless_m rcx, rdx, r9, r8, r10, r11
+    tournament_tree_update_root_branchless_m rcx, rdx, r9, r8, r10
     ret
 tournament_tree_update_root ENDP
 
