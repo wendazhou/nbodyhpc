@@ -17,9 +17,6 @@ namespace {
 template <typename DistanceT, typename QueueT>
 struct InsertShorterDistanceAsmAvx2 : InsertShorterDistanceVanilla<DistanceT, QueueT> {};
 
-#ifdef _WIN32
-// Only implemented on Windows at the moment
-
 template <>
 struct InsertShorterDistanceAsmAvx2<
     L2Distance, TournamentTree<std::pair<float, uint32_t>, PairLessFirst>> {
@@ -35,8 +32,6 @@ struct InsertShorterDistanceAsmAvx2<
             positions.data(), positions.size(), query.data(), distances.data().data());
     }
 };
-
-#endif
 
 } // namespace
 
