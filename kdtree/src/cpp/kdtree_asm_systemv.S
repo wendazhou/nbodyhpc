@@ -1,5 +1,59 @@
 .intel_syntax noprefix
 
+
+# Macro implementation of updating root element in a tournament tree.
+#   This implementation makes use of a branchless strategy for better performance.
+.macro tournament_tree_update_root_m reg_tree = rdi, reg_idx = rsi, reg_element_idx = rdx, reg_tmp1 = r8, reg_tmp2 = r9
+    cmp \reg_idx, 1
+    jbe .finish
+
+    # Load initial index of element
+    mov \reg_tmp1, \reg_idx
+    shl \reg_tmp1, 32
+    or \reg_element_idx, \reg_tmp1
+
+.loop:
+    shr \reg_idx, 1
+
+    # Compute address at rdi + 12 * rsi
+    lea rax, [\reg_idx + 2 * \reg_idx]
+    lea rax, [\reg_tree + 4 * rax]
+
+    movss xmm1, DWORD PTR [rax]
+    ucomiss xmm1, xmm0
+
+    # Branchless assign xmm0 to be winner, xmm9 to be loser
+    vminss xmm9, xmm0, xmm1
+    vmaxss xmm0, xmm0, xmm1
+    movss xmm1, xmm9
+
+    # Store current winner as loser, load stored winner
+    mov \reg_tmp1, QWORD PTR[rax + 4]
+    mov \reg_tmp2, \reg_tmp1
+    cmova \reg_tmp2, \reg_element_idx
+    mov QWORD PTR [rax + 4], \reg_tmp2
+    cmova \reg_element_idx, \reg_tmp1
+
+    movss DWORD PTR [rax], xmm1
+.loop_check:
+    cmp \reg_idx, 1
+    ja .loop
+.finish:
+    movss DWORD PTR[rdi], xmm0
+    mov QWORD PTR[\reg_tree + 4], \reg_element_idx
+.endm
+
+# Macro implementation of swapping with top element in the tree.
+#    This macro reads out the index of the top element from the top of the tree,
+#    and then writes the given values (in fv_reg, sv_reg) to that element's location.
+.macro tournament_tree_swap_top_m reg_tree, reg_out_idx, fv_reg, sv_reg, reg_out_address
+    mov \reg_out_idx, DWORD PTR [\reg_tree + 8]
+    lea \reg_out_address, [\reg_out_idx + \reg_out_idx * 2]
+    lea \reg_out_address, [\reg_tree + \reg_out_address * 4]
+    vmovss DWORD PTR[\reg_out_address], \fv_reg
+    mov DWORD PTR[\reg_out_address + 4], \sv_reg
+.endm
+
 # Implementation of updating root element in tournament tree
 #   Specialized for a tournament tree of float, uint32_t pairs
 #   with comparison only induced by the first element.
@@ -12,47 +66,7 @@
 .type tournament_tree_update_root, @function
 .global tournament_tree_update_root
 tournament_tree_update_root:
-    cmp esi, 1
-    jbe .finish
-
-    # Load initial index of element into ecx
-    mov ecx, esi
-
-    # In the main loop, we maintain a copy of the current value,
-    # which is comprised of a triplet (float, uint32_t, uint32_t),
-    # with the first two values corresponding to the value stored
-    # in the tournament tree, and the last value corresponding to
-    # the original index of the element in the tournament tree.
-    # They are kept in registers xmm0, edx, ecx
-.loop:
-    shr esi
-
-    # Compute address at rdi + 12 * rsi
-    lea r8, [rsi + 2 * rsi]
-    lea r8, [rdi + 4 * r8]
-
-    movss xmm1, DWORD PTR [r8]
-    ucomiss xmm1, xmm0
-    jbe .loop_check
-
-    # Store current winner as loser, load stored winner
-    mov eax, DWORD PTR[r8 + 4]
-    mov DWORD PTR [r8 + 4], edx
-    mov r9d, DWORD PTR[r8 + 8]
-    mov DWORD PTR [r8 + 8], ecx
-    mov edx, eax
-    mov ecx, r9d
-
-    movss DWORD PTR [r8], xmm0
-    movss xmm0, xmm1
-
-.loop_check:
-    cmp esi, 1
-    ja .loop
-.finish:
-    movss DWORD PTR[rdi], xmm0
-    mov DWORD PTR[rdi + 4], edx
-    mov DWORD PTR[rdi + 8], ecx
+    tournament_tree_update_root_m rdi, rsi, rdx, r8, r9
     ret
 
 
@@ -65,10 +79,7 @@ tournament_tree_update_root:
 .global tournament_tree_replace_top
 tournament_tree_replace_top:
     mov edx, esi
-    mov esi, DWORD PTR[rdi + 8]
-    lea eax, [esi + 2 * esi]
-    vmovss DWORD PTR[rdi + 4 * rax], xmm0
-    mov DWORD PTR[rdi + 4 * rax + 4], edx
+    tournament_tree_swap_top_m rdi, esi, xmm0, edx, rax
     jmp tournament_tree_update_root # tail call
 
 .type wenda_find_closest_l2_avx2, @function

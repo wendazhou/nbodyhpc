@@ -174,6 +174,8 @@ TEST(InserterAsm, FindClosestMultiple) {
     }
 }
 
+#ifdef _WIN32
+
 TEST(InserterAsm, InsertL2Bulk) {
     const uint32_t num_closest = 16;
     wenda::kdtree::L2Distance distance;
@@ -211,3 +213,5 @@ TEST(InserterAsm, InsertL2Bulk) {
         ASSERT_EQ(result, result2);
     }
 }
+
+#endif
