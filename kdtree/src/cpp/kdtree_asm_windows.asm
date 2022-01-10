@@ -20,12 +20,7 @@ restore_xmm_registers MACRO rfp: REQ, offset: REQ, regs :VARARG
 ENDM
 
 ; Macro for loading and computing 
-load_and_compute_l2 MACRO query_reg
-    vmovups ymm3, YMMWORD PTR [rcx]
-    vmovups ymm4, YMMWORD PTR [rcx + 32]
-    vmovups ymm5, YMMWORD PTR [rcx + 64]
-    vmovups ymm6, YMMWORD PTR [rcx + 96]
-
+compute_l2 MACRO query_reg
     vpunpckhdq ymm7, ymm3, ymm5
     vpunpckhdq ymm8, ymm4, ymm6
     vpunpckhdq ymm7, ymm7, ymm8
@@ -89,8 +84,27 @@ wenda_find_closest_l2_avx2 PROC PUBLIC FRAME
     lea rdx, [rdx * 8]
     lea rdx, [rcx + rdx * 2 - 7 * 16]
 
+    ; Check alignment of initial positions
+    test rcx, 32 - 1
+    jz loop_start
+
+    ; Not aligned to 32 bytes, fix alignment by running a single iteration
+    vmovaps xmm3, XMMWORD PTR [rcx]
+    vsubps xmm3, xmm3, xmm2
+    vdpps xmm3, xmm3, xmm3, 01110001b
+    ucomiss xmm3, xmm9
+    jae loop_start
+
+    vbroadcastss xmm9, xmm3
+    mov r11d, DWORD PTR[rcx + 12]
+    add rcx, 16
 loop_start:
-    load_and_compute_l2 ymm2
+    vmovaps ymm3, YMMWORD PTR [rcx]
+    vmovaps ymm4, YMMWORD PTR [rcx + 32]
+    vmovaps ymm5, YMMWORD PTR [rcx + 64]
+    vmovaps ymm6, YMMWORD PTR [rcx + 96]
+
+    compute_l2 ymm2
 
     vmovdqa YMMWORD PTR [indices_buffer], ymm7
 
@@ -134,7 +148,7 @@ loop_end:
 ; Tail loop (remainder)
     vmovaps xmm5, xmm9
 tail_start:
-    vmovups xmm3, XMMWORD PTR [rcx]
+    vmovaps xmm3, XMMWORD PTR [rcx]
     vsubps xmm3, xmm3, xmm2
     vdpps xmm3, xmm3, xmm3, 01110001b
     ucomiss xmm3, xmm5
@@ -194,7 +208,12 @@ wenda_insert_closest_l2_avx2 PROC PUBLIC FRAME
     lea rdx, [rcx + rdx * 2 - 7 * 16]
 
 loop_start:
-    load_and_compute_l2 ymm2
+    vmovups ymm3, YMMWORD PTR [rcx]
+    vmovups ymm4, YMMWORD PTR [rcx + 32]
+    vmovups ymm5, YMMWORD PTR [rcx + 64]
+    vmovups ymm6, YMMWORD PTR [rcx + 96]
+
+    compute_l2 ymm2
 
     vmovdqa YMMWORD PTR [indices_buffer], ymm7
 
