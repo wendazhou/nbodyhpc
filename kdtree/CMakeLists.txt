@@ -54,6 +54,7 @@ endif()
 
 if(WIN32)
 set(KDTREE_ASM_SOURCES src/cpp/kdtree_asm_windows.asm)
+set_source_files_properties(src/cpp/kdtree_asm_windows.asm PROPERTIES OBJECT_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/cpp/tournament_tree_asm_windows.asm)
 else()
 set(KDTREE_ASM_SOURCES src/cpp/kdtree_asm_systemv.S)
 endif()
