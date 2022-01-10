@@ -45,6 +45,12 @@ compute_l2 MACRO query_reg
     vaddps ymm3, ymm3, ymm5
 ENDM
 
+compute_l2_single MACRO query_reg
+    vmovaps xmm0, XMMWORD PTR [rcx]
+    vsubps xmm0, xmm0, query_reg
+    vdpps xmm0, xmm0, xmm0, 01110001b
+ENDM
+
 ; Loads query vector and duplicates across lanes
 ;   - reg_source: register containing the address of the query vector to load
 ;   - reg_idx: integer representing the xmm register to load into
@@ -93,6 +99,61 @@ scalar_insert_loop MACRO mask_reg, start_label
     jne start_label
 ENDM
 
+; Macro for find closest function, parametrized by the distance computation
+; to allow for different distance parametrizations.
+find_closest_m MACRO compute_distance, compute_distance_single
+    ; Load query vector into xmm0, and duplicate across lanes
+    load_query_vector r8, 2, query_mask
+
+    ; Load current best distance
+    vbroadcastss ymm9, DWORD PTR [flt_max]
+
+    ; Load end pointer into rdx
+    lea rdx, [rdx * 8]
+    lea rdx, [rcx + rdx * 2 - 7 * 16]
+
+    ; Check if any main iterations need to be done
+    cmp rcx, rdx
+    jae tail_loop
+loop_start:
+    compute_distance ymm2
+    compare_distances eax
+scalar_insert_start:
+    scalar_insert_test eax, scalar_insert_end
+
+    vbroadcastss ymm9, xmm0
+    mov r11d, [indices_buffer + r10]
+scalar_insert_end:
+    scalar_insert_loop eax, scalar_insert_start
+loop_end:
+    lea rcx, [rcx + 128]
+    cmp rcx, rdx
+    jb loop_start
+
+; Store best result so far into eax
+    mov eax, r11d
+
+tail_loop:
+; Adjust end pointer to non-truncated value
+    add rdx, 7 * 16
+; Test for any iterations in tail loop
+    cmp rcx, rdx
+    je done
+; Tail loop (remainder)
+    vmovaps xmm5, xmm9
+tail_loop_start:
+    compute_distance_single xmm2
+    ucomiss xmm0, xmm5
+    jae tail_end
+
+    vmovaps xmm5, xmm0
+    mov eax, DWORD PTR[rcx + 12]
+tail_end:
+    add rcx, 16
+    cmp rcx, rdx
+    jb tail_loop_start
+ENDM
+
 
 ; Procedure for finding the closest element in positions to given query
 ; C prototype: void find_closest_element(const char* positions, size_t n, const float* query)
@@ -120,59 +181,7 @@ wenda_find_closest_l2_avx2 PROC PUBLIC FRAME
     indices_buffer EQU rbp
     distances_buffer EQU rbp + 32
 
-    ; Load query vector into xmm0, and duplicate across lanes
-    load_query_vector r8, 2, query_mask
-
-    ; Load current best distance
-    vbroadcastss ymm9, DWORD PTR [flt_max]
-
-    ; Load end pointer into rdx
-    lea rdx, [rdx * 8]
-    lea rdx, [rcx + rdx * 2 - 7 * 16]
-
-    ; Check if any main iterations need to be done
-    cmp rcx, rdx
-    jae tail_loop
-loop_start:
-    compute_l2 ymm2
-    compare_distances eax
-scalar_insert_start:
-    scalar_insert_test eax, scalar_insert_end
-
-    vbroadcastss ymm9, xmm0
-    mov r11d, [indices_buffer + r10]
-scalar_insert_end:
-    scalar_insert_loop eax, scalar_insert_start
-loop_end:
-    lea rcx, [rcx + 128]
-    cmp rcx, rdx
-    jb loop_start
-
-; Store best result so far into eax
-    mov eax, r11d
-
-tail_loop:
-; Adjust end pointer to non-truncated value
-    add rdx, 7 * 16
-; Test for any iterations in tail loop
-    cmp rcx, rdx
-    je done
-; Tail loop (remainder)
-    vmovaps xmm5, xmm9
-tail_loop_start:
-    vmovaps xmm3, XMMWORD PTR [rcx]
-    vsubps xmm3, xmm3, xmm2
-    vdpps xmm3, xmm3, xmm3, 01110001b
-    ucomiss xmm3, xmm5
-    jae tail_end
-
-    vmovaps xmm5, xmm3
-    mov eax, DWORD PTR[rcx + 12]
-tail_end:
-    add rcx, 16
-    cmp rcx, rdx
-    jb tail_loop_start
-
+    find_closest_m compute_l2, compute_l2_single
 done:
 ; Epilog
     restore_xmm_registers rsp, 64 + 16, xmm6, xmm7, xmm8, xmm9
