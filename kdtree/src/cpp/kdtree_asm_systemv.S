@@ -6,14 +6,14 @@
 #   This implementation makes use of a branchless strategy for better performance.
 .macro tournament_tree_update_root_m reg_tree = rdi, reg_idx = rsi, reg_element_idx = rdx, reg_tmp1 = r8, reg_tmp2 = r9
     LOCAL loop_start, finish
-    cmp \reg_idx, 1
-    jbe finish
 
     # Load initial index of element
     mov \reg_tmp1, \reg_idx
     shl \reg_tmp1, 32
     or \reg_element_idx, \reg_tmp1
 
+    cmp \reg_idx, 1
+    jbe finish
 loop_start:
     shr \reg_idx, 1
 
@@ -120,11 +120,16 @@ tournament_tree_replace_top:
 wenda_insert_closest_l2_avx2:
     indices_buffer_offset = 0
     distances_buffer_offset = 32
+    stack_size = 64 + 16
 
     push rbx
     push r12
+    push rbp
+    mov rbp, rsp
 
-    sub rsp, 64
+    # allocate stack and align to 32-byte boundary
+    sub rsp, stack_size
+    and rsp, -32
 
     load_query_vector
 
@@ -135,16 +140,19 @@ wenda_insert_closest_l2_avx2:
     lea rsi, [rsi * 8]
     lea rsi, [rdi + rsi * 2 - 7 * 16]
 
+    # Check if main loop required
+    cmp rdi, rsi
+    jae 4f
 0:
     load_and_compute_l2
-    vmovups YMMWORD PTR [rsp + indices_buffer_offset], ymm7
+    vmovdqa YMMWORD PTR [rsp + indices_buffer_offset], ymm7
 
     vcmpltps ymm7, ymm3, ymm10
     vmovmskps ebx, ymm7
     test ebx, ebx
     je 1f
 
-    vmovups YMMWORD PTR[rsp + distances_buffer_offset], ymm3
+    vmovaps YMMWORD PTR[rsp + distances_buffer_offset], ymm3
     xor r10, r10
 
 2:
@@ -171,8 +179,32 @@ wenda_insert_closest_l2_avx2:
     cmp rdi, rsi
     jb 0b
 
-    add rsp, 64
+4:  # Tail handling start
+    add rsi, 7 * 16 # Adjust rsi to point to actual end
+    movss xmm5, xmm10 # Load maximum into xmm5 instead
+    # Check if tail handling required
+    cmp rdi, rsi
+    je 5f
 
+0:  # Tail loop
+    vmovups xmm0, XMMWORD PTR [rdi]
+    vsubps xmm0, xmm0, xmm2
+    vdpps xmm0, xmm0, xmm0, 0b01110001
+    ucomiss xmm0, xmm5
+    jae 1f
+
+    mov ebx, DWORD PTR[rdi + 12]
+    tournament_tree_swap_top_m rcx, r12d, xmm0, ebx, r11
+    tournament_tree_update_root_m rcx, r12, rbx, r8, r9
+
+    movss xmm5, xmm0
+1:  # Tail loop check
+    add rdi, 16
+    cmp rdi, rsi
+    jb 0b
+
+5:
+    leave
     pop r12
     pop rbx
 
@@ -181,7 +213,10 @@ wenda_insert_closest_l2_avx2:
 .type wenda_find_closest_l2_avx2, @function
 .global wenda_find_closest_l2_avx2
 wenda_find_closest_l2_avx2:
-    sub rsp, 64
+    push rbp
+    mov rbp, rsp
+    sub rsp, 64 + 16
+    and rsp, -32
 
     load_query_vector
     vbroadcastss ymm10, DWORD PTR [flt_max]
@@ -191,14 +226,14 @@ wenda_find_closest_l2_avx2:
 
 0:
     load_and_compute_l2
-    vmovups YMMWORD PTR [rsp + 32], ymm7
+    vmovdqa YMMWORD PTR [rsp + 32], ymm7
 
     vcmpltps ymm7, ymm3, ymm10
     vmovmskps eax, ymm7
     test eax, eax
     je 1f
 
-    vmovups YMMWORD PTR [rsp], ymm3
+    vmovaps YMMWORD PTR [rsp], ymm3
     xor r10, r10
 
 2:
@@ -246,7 +281,7 @@ wenda_find_closest_l2_avx2:
     jb .tail_start
 
 .done:
-    add rsp, 64
+    leave
     ret
 
 .align 16
