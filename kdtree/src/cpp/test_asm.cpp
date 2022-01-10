@@ -96,10 +96,7 @@ TEST_P(TournamentTreeAsmRandomTest, TestReplaceTop) {
 
 INSTANTIATE_TEST_SUITE_P(
     TournamentTreeAsm, TournamentTreeAsmRandomTest,
-    ::testing::Combine(
-        ::testing::Values(1, 4, 13),
-        ::testing::Values(1, 2, 3, 4, 8, 16, 27, 100)
-    ));
+    ::testing::Combine(::testing::Values(1, 4, 13), ::testing::Values(1, 2, 3, 4, 8, 16, 27, 100)));
 
 class FindClosestAsmTest : public ::testing::TestWithParam<int> {
   public:
@@ -125,6 +122,10 @@ TEST_P(FindClosestAsmTest, FindClosest) {
             [&](wenda::kdtree::PositionAndIndex const &p) {
                 return std::make_pair(distance(p.position, query), p.index);
             });
+
+        if (result.second != closest_idx_asm) {
+            closest_idx_asm = wenda_find_closest_l2_avx2(positions.data(), positions.size(), query.data());
+        }
 
         ASSERT_EQ(result.second, closest_idx_asm);
     }

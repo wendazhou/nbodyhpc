@@ -93,26 +93,11 @@ wenda_find_closest_l2_avx2 PROC PUBLIC FRAME
     ; Check if any main iterations need to be done
     cmp rcx, rdx
     jae tail_loop
-
-    ; Check alignment of initial positions
-    test rcx, 32 - 1
-    jz loop_start
-
-    ; Not aligned to 32 bytes, fix alignment by running a single iteration
-    vmovaps xmm3, XMMWORD PTR [rcx]
-    vsubps xmm3, xmm3, xmm2
-    vdpps xmm3, xmm3, xmm3, 01110001b
-    ucomiss xmm3, xmm9
-    jae loop_start
-
-    vbroadcastss xmm9, xmm3
-    mov r11d, DWORD PTR[rcx + 12]
-    add rcx, 16
 loop_start:
-    vmovaps ymm3, YMMWORD PTR [rcx]
-    vmovaps ymm4, YMMWORD PTR [rcx + 32]
-    vmovaps ymm5, YMMWORD PTR [rcx + 64]
-    vmovaps ymm6, YMMWORD PTR [rcx + 96]
+    vmovups ymm3, YMMWORD PTR [rcx]
+    vmovups ymm4, YMMWORD PTR [rcx + 32]
+    vmovups ymm5, YMMWORD PTR [rcx + 64]
+    vmovups ymm6, YMMWORD PTR [rcx + 96]
 
     compute_l2 ymm2
 
@@ -173,8 +158,8 @@ tail_end:
 
 done:
 ; Epilog
-    vzeroupper
     restore_xmm_registers rsp, 64 + 16, xmm6, xmm7, xmm8, xmm9
+    vzeroupper
     add rsp, stack_size
     pop rbp
     ret
