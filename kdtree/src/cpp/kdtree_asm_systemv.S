@@ -21,13 +21,13 @@ loop_start:
     lea rax, [\reg_idx + 2 * \reg_idx]
     lea rax, [\reg_tree + 4 * rax]
 
-    movss xmm1, DWORD PTR [rax]
+    vmovss xmm1, DWORD PTR [rax]
     ucomiss xmm1, xmm0
 
     # Branchless assign xmm0 to be winner, xmm9 to be loser
     vminss xmm9, xmm0, xmm1
     vmaxss xmm0, xmm0, xmm1
-    movss xmm1, xmm9
+    vmovaps xmm1, xmm9
 
     # Store current winner as loser, load stored winner
     mov \reg_tmp1, QWORD PTR[rax + 4]
@@ -36,12 +36,12 @@ loop_start:
     mov QWORD PTR [rax + 4], \reg_tmp2
     cmova \reg_element_idx, \reg_tmp1
 
-    movss DWORD PTR [rax], xmm1
+    vmovss DWORD PTR [rax], xmm1
 
     cmp \reg_idx, 1
     ja loop_start
 finish:
-    movss DWORD PTR[\reg_tree], xmm0
+    vmovss DWORD PTR[\reg_tree], xmm0
     mov QWORD PTR[\reg_tree + 4], \reg_element_idx
 .endm
 
@@ -69,6 +69,7 @@ finish:
 .global tournament_tree_update_root
 tournament_tree_update_root:
     tournament_tree_update_root_m rdi, rsi, rdx, r8, r9
+    vzeroupper
     ret
 
 
@@ -197,13 +198,14 @@ wenda_insert_closest_l2_avx2:
     tournament_tree_swap_top_m rcx, r12d, xmm0, ebx, r11
     tournament_tree_update_root_m rcx, r12, rbx, r8, r9
 
-    movss xmm5, xmm0
+    vmovaps xmm5, xmm0
 1:  # Tail loop check
     add rdi, 16
     cmp rdi, rsi
     jb 0b
 
 5:
+    vzeroupper
     leave
     pop r12
     pop rbx
@@ -281,6 +283,7 @@ wenda_find_closest_l2_avx2:
     jb .tail_start
 
 .done:
+    vzeroupper
     leave
     ret
 
