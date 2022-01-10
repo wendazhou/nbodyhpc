@@ -85,12 +85,7 @@ tournament_tree_replace_top:
     tournament_tree_swap_top_m rdi, esi, xmm0, edx, rax
     jmp tournament_tree_update_root # tail call
 
-.macro load_and_compute_l2
-    vmovups ymm3, YMMWORD PTR [rdi]
-    vmovups ymm4, YMMWORD PTR [rdi + 32]
-    vmovups ymm5, YMMWORD PTR [rdi + 64]
-    vmovups ymm6, YMMWORD PTR [rdi + 96]
-
+.macro compute_l2
     vpunpckhdq ymm7, ymm3, ymm5
     vpunpckhdq ymm8, ymm4, ymm6
     vpunpckhdq ymm7, ymm7, ymm8
@@ -145,7 +140,12 @@ wenda_insert_closest_l2_avx2:
     cmp rdi, rsi
     jae 4f
 0:
-    load_and_compute_l2
+    vmovups ymm3, YMMWORD PTR [rdi]
+    vmovups ymm4, YMMWORD PTR [rdi + 32]
+    vmovups ymm5, YMMWORD PTR [rdi + 64]
+    vmovups ymm6, YMMWORD PTR [rdi + 96]
+
+    compute_l2
     vmovdqa YMMWORD PTR [rsp + indices_buffer_offset], ymm7
 
     vcmpltps ymm7, ymm3, ymm10
@@ -226,8 +226,16 @@ wenda_find_closest_l2_avx2:
     lea rsi, [rsi * 8]
     lea rsi, [rdi + rsi * 2 - 7 * 16]
 
+    # Check if main loop required
+    cmp rdi, rsi
+    jae 4f
 0:
-    load_and_compute_l2
+    vmovups ymm3, YMMWORD PTR [rdi]
+    vmovups ymm4, YMMWORD PTR [rdi + 32]
+    vmovups ymm5, YMMWORD PTR [rdi + 64]
+    vmovups ymm6, YMMWORD PTR [rdi + 96]
+
+    compute_l2
     vmovdqa YMMWORD PTR [rsp + 32], ymm7
 
     vcmpltps ymm7, ymm3, ymm10
@@ -260,29 +268,27 @@ wenda_find_closest_l2_avx2:
 
     mov eax, r11d
 
-# Adjust end pointer to non-truncated value
-    add rsi, 7 * 16
-# Test for tail loop
-    cmp rdi, rsi
-    je .done
+4: # Tail handling start
+    add rsi, 7 * 16 # Adjust end pointer to non-truncated value
+    cmp rdi, rsi # Test if tail loop required
+    je 5f # epilog
 
-# Tail loop
     vmovaps xmm5, xmm10
-.tail_start:
+0:
     vmovups xmm3, XMMWORD PTR [rdi]
     vsubps xmm3, xmm3, xmm2
     vdpps xmm3, xmm3, xmm3, 0b01110001
     ucomiss xmm3, xmm5
-    jae .tail_end
+    jae 1f
 
     vbroadcastss xmm5, xmm3
     mov eax, DWORD PTR[rdi + 12]
-.tail_end:
+1:
     add rdi, 16
     cmp rdi, rsi
-    jb .tail_start
+    jb 0b
 
-.done:
+5:
     vzeroupper
     leave
     ret
