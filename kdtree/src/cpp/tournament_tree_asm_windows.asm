@@ -135,7 +135,7 @@ ENDM
 ; All arguments are clobbered by the macro, except for ptr_tree which retains its original value.
 ; Additionally, rax, xmm0 and xmm1 are clobbered by the macro.
 ;
-tournament_tree_update_root_branchless_m MACRO ptr_tree, reg_index, reg_element_idx, reg_tmp1, reg_tmp2
+tournament_tree_update_root_branchless_m MACRO ptr_tree, reg_index, reg_element_idx, reg_tmp1, reg_tmp2, reg_xmm_tmp
     LOCAL loop_start, loop_check, finish
 
     ; Load initial index of element into ecx
@@ -159,9 +159,9 @@ loop_start:
     ucomiss xmm1, xmm0
 
     ; Branchless assign xmm0 to be winner, xmm9 to be loser
-    vminss xmm9, xmm0, xmm1
+    vminss reg_xmm_tmp, xmm0, xmm1
     vmaxss xmm0, xmm0, xmm1
-    vmovaps xmm1, xmm9
+    vmovaps xmm1, reg_xmm_tmp
 
     ; Store current winner as loser, load stored winner
     mov reg_tmp1, QWORD PTR[rax + 4]
@@ -205,7 +205,7 @@ ENDM
 ;   r9d: second value of the inserted element
 tournament_tree_update_root PROC PUBLIC
     vmovaps xmm0, xmm2
-    tournament_tree_update_root_branchless_m rcx, rdx, r9, r8, r10
+    tournament_tree_update_root_branchless_m rcx, rdx, r9, r8, r10, xmm2
     vzeroupper
     ret
 tournament_tree_update_root ENDP
