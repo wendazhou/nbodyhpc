@@ -14,7 +14,7 @@ class KDTree(cKDTree):
     This class implements an optimized KD-tree for spatial data (3D), with optional
     support for periodic boundary conditions.
     """
-    def __init__(self, points: np.ndarray, leafsize: int=10, max_threads: int=-1, boxsize: float=None, **kwargs):
+    def __init__(self, points: np.ndarray, leafsize: int=128, max_threads: int=-1, boxsize: float=None, **kwargs):
         """Build a new KDTree.
 
         Parameters
@@ -23,6 +23,8 @@ class KDTree(cKDTree):
             A (N, 3) array of N points in 3 dimensions.
         leafsize : int
             The number of points in a leaf node (where we switch to brute-force search).
+            The default value is set to a much larger value than that in scikit-learn as it yields
+            better performance (both at construction time and at search time).
         max_threads : int
             The maximum number of threads to use during construction.
             -1 indicates that all available threads may be used.
