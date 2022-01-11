@@ -133,7 +133,7 @@ TEST_P(FindClosestAsmTest, FindClosest) {
 
 TEST_P(FindClosestAsmTest, FindClosestPeriodic) {
     float boxsize = 1.0f;
-    wenda::kdtree::L2PeriodicDistance<float> distance(boxsize);
+    wenda::kdtree::L2PeriodicDistance<float> distance{boxsize};
     auto length = GetParam();
 
     for (int seed : seeds_) {
@@ -241,7 +241,7 @@ TEST_P(InserterAsmTest, InsertL2Periodic) {
     int num_positions;
 
     std::tie(num_closest, num_positions) = GetParam();
-    wenda::kdtree::L2PeriodicDistance<float> distance(1.1f);
+    wenda::kdtree::L2PeriodicDistance<float> distance{1.1f};
 
     insert_l2_test(
         num_closest,

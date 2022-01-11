@@ -60,13 +60,13 @@ default rel
     mov DWORD[reg_tmp_addr + 4], reg_sv
 %endmacro
 
-global tournament_tree_update_root:function
+global tournament_tree_update_root
 tournament_tree_update_root:
     tournament_tree_update_root_m rdi, rsi, rdx, r8, r9
     vzeroupper
     ret
 
-global tournament_tree_replace_top:function
+global tournament_tree_replace_top
 tournament_tree_replace_top:
     mov edx, esi
     tournament_tree_swap_top_m rdi, esi, xmm0, edx, rax
@@ -252,7 +252,7 @@ tournament_tree_replace_top:
     jb %%tail_start
 %endmacro
 
-global wenda_find_closest_l2_avx2:function
+global wenda_find_closest_l2_avx2
 wenda_find_closest_l2_avx2:
     push rbp
     mov rbp, rsp
@@ -265,7 +265,7 @@ wenda_find_closest_l2_avx2:
     leave
     ret
 
-global wenda_find_closest_l2_periodic_avx2:function
+global wenda_find_closest_l2_periodic_avx2
 wenda_find_closest_l2_periodic_avx2:
     push rbp
     mov rbp, rsp
@@ -372,7 +372,7 @@ wenda_find_closest_l2_periodic_avx2:
     jb %%tail_start
 %endmacro
 
-global wenda_insert_closest_l2_avx2:function
+global wenda_insert_closest_l2_avx2
 wenda_insert_closest_l2_avx2:
     %assign indices_buffer_offset 0
     %assign distances_buffer_offset 32
@@ -396,8 +396,7 @@ wenda_insert_closest_l2_avx2:
 
     ret
 
-
-global wenda_insert_closest_l2_periodic_avx2:function
+global wenda_insert_closest_l2_periodic_avx2
 wenda_insert_closest_l2_periodic_avx2:
     %assign indices_buffer_offset 0
     %assign distances_buffer_offset 32
@@ -422,6 +421,7 @@ wenda_insert_closest_l2_periodic_avx2:
     ret
 
 align 16
+static query_mask, flt_max
 query_mask:
     dd -1
     dd -1

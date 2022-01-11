@@ -75,6 +75,11 @@ else()
     target_compile_options(kdtree_asm PRIVATE $<$<COMPILE_LANGUAGE:ASM_NASM>:-g>)
 endif()
 
+if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+    # Macho prefixes C functions with underscore, so we have to emit corresponding symbols from asm
+    target_compile_options(kdtree_asm PUBLIC $<$<COMPILE_LANGUAGE:ASM_NASM>:--prefix=_>)
+endif()
+
 add_executable(kdtree_main src/cpp/main.cpp)
 target_link_libraries(kdtree_main PRIVATE kdtree)
 target_include_directories(kdtree_main PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/third_party/random123/include)

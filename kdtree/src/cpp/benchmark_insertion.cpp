@@ -220,7 +220,7 @@ void ReduceDistance(benchmark::State &state) {
         float result = std::transform_reduce(
 #if __cpp_lib_execution >= 201902
             std::execution::unseq,
-#else
+#elif defined(__cpp_lib_execution)
             std::execution::seq,
 #endif
             subspan.begin(),
