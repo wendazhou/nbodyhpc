@@ -116,7 +116,7 @@ tournament_tree_replace_top:
     vaddps \out_reg, ymm3, ymm5
 .endm
 
-.macro compute_l2_periodic
+.macro compute_l2_periodic out_reg = ymm3
     transpose_registers
 
     # Compute differences
@@ -138,7 +138,7 @@ tournament_tree_replace_top:
 
     # Compute sum
     vaddps ymm3, ymm3, ymm4
-    vaddps ymm3, ymm3, ymm5
+    vaddps \out_reg, ymm3, ymm5
 .endm
 
 .macro compute_l2_single out_reg = xmm0
@@ -184,23 +184,7 @@ tournament_tree_replace_top:
     prepare_tail_loop
 .endm
 
-
-.type wenda_insert_closest_l2_avx2, @function
-.global wenda_insert_closest_l2_avx2
-wenda_insert_closest_l2_avx2:
-    indices_buffer_offset = 0
-    distances_buffer_offset = 32
-    stack_size = 64 + 16
-
-    push rbx
-    push r12
-    push rbp
-    mov rbp, rsp
-
-    # allocate stack and align to 32-byte boundary
-    sub rsp, stack_size
-    and rsp, -32
-
+.macro insert_closest_m compute_distance, compute_distance_single, prepare_tail, epilog_label
     load_query_vector
 
     # Load current best distance from tree
@@ -219,10 +203,9 @@ wenda_insert_closest_l2_avx2:
     vmovups ymm4, YMMWORD PTR [rdi + 32]
     vmovups ymm5, YMMWORD PTR [rdi + 64]
     vmovups ymm6, YMMWORD PTR [rdi + 96]
-
 0:
     # Compute l2 distance for each pair, store results in ymm11. Indices are also extracted and stored in ymm7.
-    compute_l2 ymm0
+    compute_distance ymm0
 
     vcmpltps ymm8, ymm0, ymm15 # Compute pointwise comparison of distances to current best
     vmovmskps ebx, ymm8 # Store comparison result in ebx
@@ -270,13 +253,11 @@ wenda_insert_closest_l2_avx2:
     add rsi, 7 * 16 # Adjust rsi to point to actual end
     # Check if tail handling required
     cmp rdi, rsi
-    je 5f
+    je epilog_label
 
-    prepare_tail_loop
+    prepare_tail
 0:  # Tail loop
-    vmovups xmm0, XMMWORD PTR [rdi]
-    vsubps xmm0, xmm0, xmm2
-    vdpps xmm0, xmm0, xmm0, 0b01110001
+    compute_distance_single
     ucomiss xmm0, xmm5
     jae 1f
 
@@ -289,7 +270,52 @@ wenda_insert_closest_l2_avx2:
     add rdi, 16
     cmp rdi, rsi
     jb 0b
+.endm
 
+
+.type wenda_insert_closest_l2_avx2, @function
+.global wenda_insert_closest_l2_avx2
+wenda_insert_closest_l2_avx2:
+    indices_buffer_offset = 0
+    distances_buffer_offset = 32
+    stack_size = 64
+
+    push rbx
+    push r12
+    push rbp
+    mov rbp, rsp
+
+    # allocate stack and align to 32-byte boundary
+    sub rsp, stack_size
+    and rsp, -32
+
+    insert_closest_m compute_l2, compute_l2_single, prepare_tail_loop, 5f
+5:
+    vzeroupper
+    leave
+    pop r12
+    pop rbx
+
+    ret
+
+.type wenda_insert_closest_l2_periodic_avx2, @function
+.global wenda_insert_closest_l2_periodic_avx2
+wenda_insert_closest_l2_periodic_avx2:
+    indices_buffer_offset = 0
+    distances_buffer_offset = 32
+    stack_size = 64 + 16
+
+    push rbx
+    push r12
+    push rbp
+    mov rbp, rsp
+
+    # allocate stack and align to 32-byte boundary
+    sub rsp, stack_size
+    and rsp, -32
+
+    vbroadcastss ymm2, xmm0 # Load box size
+    insert_closest_m compute_l2_periodic, compute_l2_periodic_single, prepare_tail_loop_periodic, 5f
 5:
     vzeroupper
     leave
