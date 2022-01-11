@@ -129,6 +129,11 @@ compute_l2_single MACRO query_reg
     vdpps xmm0, xmm0, xmm0, 01110001b
 ENDM
 
+; Computes (periodic) l2 distance to the query
+; for a single point, loaded from rcx.
+;
+; In addition, this macro expects that a mask is loaded into xmm8
+; and that the periodic box size is loaded int xmm6.
 compute_l2_periodic_single MACRO query_reg
     vmaskmovps xmm0, xmm8, XMMWORD PTR [rcx]
     vsubps xmm0, xmm0, query_reg
@@ -199,11 +204,11 @@ ENDM
 ; Compares all distances to stored value in max_reg, and writes out result to mask_reg
 ; If any are smaller, stores distances and indices to stack.
 ; Otherwise, jumps to loop_end label
-compare_distances MACRO mask_reg, max_reg
+compare_distances MACRO mask_reg, max_reg, end_label
     vcmpltps ymm8, ymm3, max_reg
     vmovmskps mask_reg, ymm8
     test mask_reg, mask_reg
-    je loop_end
+    je end_label
 
     vmovdqa YMMWORD PTR [indices_buffer], ymm7
     vmovaps YMMWORD PTR [distances_buffer], ymm3
@@ -236,6 +241,8 @@ ENDM
 ; Macro for find closest function, parametrized by the distance computation
 ; to allow for different distance parametrizations.
 find_closest_m MACRO load_query, compute_distance, compute_distance_single
+    LOCAL loop_start, scalar_insert_start, scalar_insert_end, loop_end, tail_loop, tail_loop_start, tail_end
+
     current_max_reg EQU ymm15
     current_max_reg_xmm EQU xmm15
 
@@ -254,7 +261,7 @@ find_closest_m MACRO load_query, compute_distance, compute_distance_single
     jae tail_loop
 loop_start:
     compute_distance
-    compare_distances eax, current_max_reg
+    compare_distances eax, current_max_reg, loop_end
 scalar_insert_start:
     scalar_insert_test eax, current_max_reg_xmm, scalar_insert_end
 
@@ -374,6 +381,66 @@ done:
     ret
 wenda_find_closest_l2_periodic_avx2 ENDP
 
+insert_closest_m MACRO load_query, compute_distance, compute_distance_single
+    LOCAL loop_start, scalar_insert_start, scalar_insert_end, loop_end, tail_loop, tail_loop_start, tail_end
+
+    load_query r8
+
+    ; Load current best distance from tree
+    vbroadcastss ymm9, DWORD PTR [r9]
+
+    ; Load end pointer into rdx
+    lea rdx, [rdx * 8]
+    lea rdx, [rcx + rdx * 2 - 7 * 16]
+
+    cmp rcx, rdx
+    jae tail_loop
+
+loop_start:
+    compute_distance
+    compare_distances ebx, ymm9, loop_end
+scalar_insert_start:
+    scalar_insert_test ebx, xmm9, scalar_insert_end
+
+    ; update tournament tree with new best
+    mov esi, [indices_buffer + r10]
+    tournament_tree_swap_top_m r9, edi, xmm0, esi, r11
+    tournament_tree_update_root_branchless_m r9, rdi, rsi, r11, r12, xmm3
+
+    ; reload top value, xmm0 is updated by the tournament tree macros
+    vbroadcastss ymm9, xmm0
+scalar_insert_end:
+    scalar_insert_loop ebx, scalar_insert_start
+loop_end:
+    lea rcx, [rcx + 128]
+    cmp rcx, rdx
+    jb loop_start
+
+
+tail_loop:
+; Adjust end pointer to non-truncated value
+    add rdx, 7 * 16
+; Test for any iterations in tail loop
+    cmp rcx, rdx
+    je done
+; Tail loop (remainder)
+    vmovaps xmm5, xmm9
+tail_loop_start:
+    compute_distance_single xmm2
+    ucomiss xmm0, xmm5
+    jae tail_end
+
+    mov esi, DWORD PTR[rcx + 12]
+    tournament_tree_swap_top_m r9, edi, xmm0, esi, r11
+    tournament_tree_update_root_branchless_m r9, rdi, rsi, r11, r12, xmm3
+
+    vbroadcastss xmm5, xmm0
+tail_end:
+    add rcx, 16
+    cmp rcx, rdx
+    jb tail_loop_start
+ENDM
+
 ; Main procedure for finding k closest points to query vector,
 ;
 ; Arguments:
@@ -403,63 +470,7 @@ wenda_insert_closest_l2_avx2 PROC PUBLIC FRAME
     indices_buffer EQU rbp
     distances_buffer EQU rbp + 32
 
-    load_query_vector r8
-
-    ; Load current best distance from tree
-    vbroadcastss ymm9, DWORD PTR [r9]
-
-    ; Load end pointer into rdx
-    lea rdx, [rdx * 8]
-    lea rdx, [rcx + rdx * 2 - 7 * 16]
-
-    cmp rcx, rdx
-    jae tail_loop
-
-loop_start:
-    compute_l2
-    compare_distances ebx, ymm9
-scalar_insert_start:
-    scalar_insert_test ebx, xmm9, scalar_insert_end
-
-    ; update tournament tree with new best
-    mov esi, [indices_buffer + r10]
-    tournament_tree_swap_top_m r9, edi, xmm0, esi, r11
-    tournament_tree_update_root_branchless_m r9, rdi, rsi, r11, r12, xmm3
-
-    ; reload top value, xmm0 is updated by the tournament tree macros
-    vbroadcastss ymm9, xmm0
-scalar_insert_end:
-    scalar_insert_loop ebx, scalar_insert_start
-loop_end:
-    lea rcx, [rcx + 128]
-    cmp rcx, rdx
-    jb loop_start
-
-
-tail_loop:
-; Adjust end pointer to non-truncated value
-    add rdx, 7 * 16
-; Test for any iterations in tail loop
-    cmp rcx, rdx
-    je done
-; Tail loop (remainder)
-    vmovaps xmm5, xmm9
-tail_loop_start:
-    vmovaps xmm0, XMMWORD PTR [rcx]
-    vsubps xmm0, xmm0, xmm2
-    vdpps xmm0, xmm0, xmm0, 01110001b
-    ucomiss xmm0, xmm5
-    jae tail_end
-
-    mov esi, DWORD PTR[rcx + 12]
-    tournament_tree_swap_top_m r9, edi, xmm0, esi, r11
-    tournament_tree_update_root_branchless_m r9, rdi, rsi, r11, r12, xmm3
-
-    vbroadcastss xmm5, xmm0
-tail_end:
-    add rcx, 16
-    cmp rcx, rdx
-    jb tail_loop_start
+    insert_closest_m load_query_vector, compute_l2, compute_l2_single
 
 done:
 ; epilog
