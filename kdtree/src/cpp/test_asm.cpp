@@ -13,11 +13,16 @@ void tournament_tree_update_root(
 
 void tournament_tree_replace_top(void *tree, float element_value, uint32_t element_idx);
 uint32_t wenda_find_closest_l2_avx2(void const *positions, size_t n, float const *query);
+void wenda_insert_closest_l2_avx2(void const *positions, size_t n, float const *query, void *tree);
+
+#ifdef _WIN32
+
 uint32_t wenda_find_closest_l2_periodic_avx2(
     void const *positions, size_t n, float const *query, float box_size);
-void wenda_insert_closest_l2_avx2(void const *positions, size_t n, float const *query, void *tree);
 void wenda_insert_closest_l2_periodic_avx2(
     void const *positions, size_t n, float const *query, void *tree, float boxsize);
+
+#endif
 }
 
 namespace {
@@ -131,6 +136,8 @@ TEST_P(FindClosestAsmTest, FindClosest) {
     }
 }
 
+#ifdef _WIN32
+
 TEST_P(FindClosestAsmTest, FindClosestPeriodic) {
     float boxsize = 1.0f;
     wenda::kdtree::L2PeriodicDistance<float> distance(boxsize);
@@ -161,6 +168,8 @@ TEST_P(FindClosestAsmTest, FindClosestPeriodic) {
         ASSERT_EQ(result.second, closest_idx_asm);
     }
 }
+
+#endif
 
 INSTANTIATE_TEST_SUITE_P(
     FindClosestAsm, FindClosestAsmTest,
@@ -236,6 +245,8 @@ TEST_P(InserterAsmTest, InsertL2) {
         });
 }
 
+#ifdef _WIN32
+
 TEST_P(InserterAsmTest, InsertL2Periodic) {
     int num_closest;
     int num_positions;
@@ -257,6 +268,8 @@ TEST_P(InserterAsmTest, InsertL2Periodic) {
                 distance.box_size_);
         });
 }
+
+#endif
 
 INSTANTIATE_TEST_SUITE_P(
     InserterAsm, InserterAsmTest,

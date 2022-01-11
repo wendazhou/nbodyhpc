@@ -86,29 +86,44 @@ tournament_tree_replace_top:
     jmp tournament_tree_update_root # tail call
 
 .macro compute_l2 out_reg = ymm3
-    vpunpckhdq ymm7, ymm3, ymm5
-    vpunpckhdq ymm8, ymm4, ymm6
-    vpunpckhdq ymm7, ymm7, ymm8
+    # Transpose loaded values
+    vshufps ymm8, ymm3, ymm4, 0x044
+    vshufps ymm9, ymm3, ymm4, 0x0ee
+    vshufps ymm10, ymm5, ymm6, 0x044
+    vshufps ymm11, ymm5, ymm6, 0x0ee
 
-    vsubps ymm3, ymm3, ymm2
-    vsubps ymm4, ymm4, ymm2
-    vsubps ymm5, ymm5, ymm2
-    vsubps ymm6, ymm6, ymm2
+    vshufps ymm3, ymm8, ymm10, 0x088
+    vshufps ymm4, ymm8, ymm10, 0x0dd
+    vshufps ymm5, ymm9, ymm11, 0x088
+    vshufps ymm7, ymm9, ymm11, 0x0dd
 
-    vdpps ymm3, ymm3, ymm3, 0b01110001
-    vdpps ymm4, ymm4, ymm4, 0b01110010
-    vdpps ymm5, ymm5, ymm5, 0b01110100
-    vdpps ymm6, ymm6, ymm6, 0b01111000
+    # Compute differences
+    vsubps ymm3, ymm3, ymm12
+    vsubps ymm4, ymm4, ymm13
+    vsubps ymm5, ymm5, ymm14
 
+    # Compute squares
+    vmulps ymm3, ymm3, ymm3
+    vmulps ymm4, ymm4, ymm4
+    vmulps ymm5, ymm5, ymm5
+
+    # Compute sum
     vaddps ymm3, ymm3, ymm4
-    vaddps ymm5, ymm5, ymm6
     vaddps \out_reg, ymm3, ymm5
 .endm
 
 .macro load_query_vector
-    vmovdqa xmm2, XMMWORD PTR [rip + query_mask]
-    vmaskmovps xmm2, xmm2, XMMWORD PTR [rdx]
-    vinsertf128 ymm2, ymm2, xmm2, 1
+    vbroadcastss ymm12, DWORD PTR [rdx]
+    vbroadcastss ymm13, DWORD PTR [rdx + 4]
+    vbroadcastss ymm14, DWORD PTR [rdx + 8]
+.endm
+
+.macro prepare_tail_loop
+    vmovaps xmm5, xmm15
+    vunpckhps xmm2, xmm12, xmm13
+    vxorps xmm13, xmm13, xmm13
+    vblendps xmm2, xmm2, xmm14, 0b0100
+    vblendps xmm2, xmm2, xmm13, 0b1000
 .endm
 
 .type wenda_insert_closest_l2_avx2, @function
@@ -130,7 +145,7 @@ wenda_insert_closest_l2_avx2:
     load_query_vector
 
     # Load current best distance from tree
-    vbroadcastss ymm10, DWORD PTR [rcx]
+    vbroadcastss ymm15, DWORD PTR [rcx]
 
     # Adjust rsi to point to end (adjusted for unroll size)
     lea rsi, [rsi * 8]
@@ -148,9 +163,9 @@ wenda_insert_closest_l2_avx2:
 
 0:
     # Compute l2 distance for each pair, store results in ymm11. Indices are also extracted and stored in ymm7.
-    compute_l2 ymm11
+    compute_l2 ymm0
 
-    vcmpltps ymm8, ymm11, ymm10 # Compute pointwise comparison of distances to current best
+    vcmpltps ymm8, ymm0, ymm15 # Compute pointwise comparison of distances to current best
     vmovmskps ebx, ymm8 # Store comparison result in ebx
 
     lea rdi, [rdi + 128] # Compute pointer for next iteration
@@ -166,7 +181,7 @@ wenda_insert_closest_l2_avx2:
     test ebx, ebx
     je 1f # skip scalar updates if all elements are worse than current best
 
-    vmovaps YMMWORD PTR[rsp + distances_buffer_offset], ymm11 # Save computed distances to stack
+    vmovaps YMMWORD PTR[rsp + distances_buffer_offset], ymm0 # Save computed distances to stack
     vmovdqa YMMWORD PTR [rsp + indices_buffer_offset], ymm7 # Save extracted indices to stack
     xor r10, r10
 2:  # Start scalar loop
@@ -175,14 +190,14 @@ wenda_insert_closest_l2_avx2:
 
     # Load distance from stack
     vmovss xmm0, DWORD PTR [rsp + distances_buffer_offset + r10]
-    ucomiss xmm0, xmm10
+    ucomiss xmm0, xmm15
     jae 3f
 
     mov r11d, DWORD PTR[rsp + indices_buffer_offset + r10]
     tournament_tree_swap_top_m rcx, r12d, xmm0, r11d, rax
     tournament_tree_update_root_m rcx, r12, r11, r8, r9
 
-    vbroadcastss ymm10, xmm0
+    vbroadcastss ymm15, xmm0
 3:  # Test scalar loop
     shr ebx, 1
     add r10, 4
@@ -194,11 +209,11 @@ wenda_insert_closest_l2_avx2:
 
 4:  # Tail handling start
     add rsi, 7 * 16 # Adjust rsi to point to actual end
-    movss xmm5, xmm10 # Load maximum into xmm5 instead
     # Check if tail handling required
     cmp rdi, rsi
     je 5f
 
+    prepare_tail_loop
 0:  # Tail loop
     vmovups xmm0, XMMWORD PTR [rdi]
     vsubps xmm0, xmm0, xmm2
@@ -233,7 +248,7 @@ wenda_find_closest_l2_avx2:
     and rsp, -32
 
     load_query_vector
-    vbroadcastss ymm10, DWORD PTR [rip + flt_max]
+    vbroadcastss ymm15, DWORD PTR [rip + flt_max]
 
     lea rsi, [rsi * 8]
     lea rsi, [rdi + rsi * 2 - 7 * 16]
@@ -248,25 +263,24 @@ wenda_find_closest_l2_avx2:
     vmovups ymm6, YMMWORD PTR [rdi + 96]
 
     compute_l2
-    vmovdqa YMMWORD PTR [rsp + 32], ymm7
 
-    vcmpltps ymm7, ymm3, ymm10
-    vmovmskps eax, ymm7
+    vcmpltps ymm8, ymm3, ymm15
+    vmovmskps eax, ymm8
     test eax, eax
     je 1f
 
+    vmovdqa YMMWORD PTR [rsp + 32], ymm7
     vmovaps YMMWORD PTR [rsp], ymm3
     xor r10, r10
-
 2:
     test eax, 1
     je 3f
 
     vmovss xmm0, DWORD PTR [rsp + 4 * r10]
-    ucomiss xmm0, xmm10
+    ucomiss xmm0, xmm15
     jae 3f
 
-    vbroadcastss ymm10, xmm0
+    vbroadcastss ymm15, xmm0
     mov r11d, [rsp + 32 + 4 * r10]
 3:
     shr eax, 1
@@ -285,7 +299,7 @@ wenda_find_closest_l2_avx2:
     cmp rdi, rsi # Test if tail loop required
     je 5f # epilog
 
-    vmovaps xmm5, xmm10
+    prepare_tail_loop
 0:
     vmovups xmm3, XMMWORD PTR [rdi]
     vsubps xmm3, xmm3, xmm2

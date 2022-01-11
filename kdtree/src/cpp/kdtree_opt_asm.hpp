@@ -35,6 +35,8 @@ struct InsertShorterDistanceAsmAvx2<
     }
 };
 
+#ifdef _WIN32
+
 template <>
 struct InsertShorterDistanceAsmAvx2<
     L2PeriodicDistance<float>, TournamentTree<std::pair<float, uint32_t>, PairLessFirst>> {
@@ -55,6 +57,8 @@ struct InsertShorterDistanceAsmAvx2<
             distance.box_size_);
     }
 };
+
+#endif
 
 } // namespace
 
