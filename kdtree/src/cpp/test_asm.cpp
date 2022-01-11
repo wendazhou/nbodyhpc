@@ -12,8 +12,10 @@ void tournament_tree_update_root(
     void *tree, uint32_t idx, float element_value, uint32_t element_idx);
 
 void tournament_tree_replace_top(void *tree, float element_value, uint32_t element_idx);
-uint32_t wenda_find_closest_l2_avx2(void *positions, size_t n, float const *query);
-void wenda_insert_closest_l2_avx2(void *positions, size_t n, float const *query, void *tree);
+uint32_t wenda_find_closest_l2_avx2(void const *positions, size_t n, float const *query);
+uint32_t wenda_find_closest_l2_periodic_avx2(
+    void const *positions, size_t n, float const *query, float box_size);
+void wenda_insert_closest_l2_avx2(void const *positions, size_t n, float const *query, void *tree);
 }
 
 namespace {
@@ -123,8 +125,35 @@ TEST_P(FindClosestAsmTest, FindClosest) {
                 return std::make_pair(distance(p.position, query), p.index);
             });
 
+        ASSERT_EQ(result.second, closest_idx_asm);
+    }
+}
+
+TEST_P(FindClosestAsmTest, FindClosestPeriodic) {
+    float boxsize = 1.0f;
+    wenda::kdtree::L2PeriodicDistance<float> distance(boxsize);
+    auto length = GetParam();
+
+    for (int seed : seeds_) {
+        auto positions = wenda::kdtree::make_random_position_and_index(length, seed);
+        std::array<float, 3> query = {0.4f, 0.5f, 0.6f};
+
+        auto closest_idx_asm =
+            wenda_find_closest_l2_periodic_avx2(positions.data(), positions.size(), query.data(), boxsize);
+
+        auto result = std::transform_reduce(
+            positions.begin(),
+            positions.end(),
+            std::pair<float, uint32_t>{std::numeric_limits<float>::max(), -1},
+            [](auto const &p1, auto const &p2) { return p1.first < p2.first ? p1 : p2; },
+            [&](wenda::kdtree::PositionAndIndex const &p) {
+                return std::make_pair(distance(p.position, query), p.index);
+            });
+
         if (result.second != closest_idx_asm) {
-            closest_idx_asm = wenda_find_closest_l2_avx2(positions.data(), positions.size(), query.data());
+            // redo for debugging purposes
+            closest_idx_asm = wenda_find_closest_l2_periodic_avx2(
+                positions.data(), positions.size(), query.data(), boxsize);
         }
 
         ASSERT_EQ(result.second, closest_idx_asm);

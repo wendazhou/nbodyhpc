@@ -82,6 +82,45 @@ compute_l2_transpose MACRO query_reg
     vaddps ymm3, ymm3, ymm5
 ENDM
 
+compute_l2_periodic_transpose MACRO query_reg
+    vmovups ymm3, YMMWORD PTR [rcx]
+    vmovups ymm4, YMMWORD PTR [rcx + 32]
+    vmovups ymm5, YMMWORD PTR [rcx + 64]
+    vmovups ymm6, YMMWORD PTR [rcx + 96]
+
+    ; Transpose loaded values
+    vshufps ymm8, ymm3, ymm4, 044h
+    vshufps ymm9, ymm3, ymm4, 0eeh
+    vshufps ymm10, ymm5, ymm6, 044h
+    vshufps ymm11, ymm5, ymm6, 0eeh
+
+    vshufps ymm3, ymm8, ymm10, 088h
+    vshufps ymm4, ymm8, ymm10, 0ddh
+    vshufps ymm5, ymm9, ymm11, 088h
+    vshufps ymm7, ymm9, ymm11, 0ddh
+
+    ; Compute differences
+    vsubps ymm3, ymm3, ymm12
+    vsubps ymm4, ymm4, ymm13
+    vsubps ymm5, ymm5, ymm14
+
+    ; Compute squares (including periodic),
+    ; and select smallest value
+    FOR reg,<ymm3,ymm4,ymm5>
+        vsubps ymm8, reg, ymm2
+        vaddps ymm9, reg, ymm2
+        vmulps reg, reg, reg
+        vmulps ymm8, ymm8, ymm8
+        vmulps ymm9, ymm9, ymm9
+        vminps reg, reg, ymm8
+        vminps reg, reg, ymm9
+    ENDM
+
+    ; Compute sum
+    vaddps ymm3, ymm3, ymm4
+    vaddps ymm3, ymm3, ymm5
+ENDM
+
 ; Computes the l2 distance to the query
 ; for a single point, loaded from rcx.
 compute_l2_single MACRO query_reg
@@ -90,9 +129,28 @@ compute_l2_single MACRO query_reg
     vdpps xmm0, xmm0, xmm0, 01110001b
 ENDM
 
+compute_l2_periodic_single MACRO query_reg
+    vmaskmovps xmm0, xmm8, XMMWORD PTR [rcx]
+    vsubps xmm0, xmm0, query_reg
+    vsubps xmm3, xmm0, xmm6
+    vaddps xmm4, xmm0, xmm6
+
+    vmulps xmm0, xmm0, xmm0
+    vmulps xmm3, xmm3, xmm3
+    vmulps xmm4, xmm4, xmm4
+
+    vminps xmm0, xmm0, xmm3
+    vminps xmm0, xmm0, xmm4
+
+    vhaddps xmm0, xmm0, xmm0
+    vhaddps xmm0, xmm0, xmm0
+ENDM
+
 ; Loads query vector and duplicates across lanes
 ; This load is associated with the compute_l2 methods.
 load_query_vector MACRO reg_source
+    query_vector_scalar = 1
+
     vmovdqa xmm2, XMMWORD PTR [query_mask]
     vmaskmovps xmm2, xmm2, XMMWORD PTR [reg_source]
     vinsertf128 ymm2, ymm2, xmm2, 1
@@ -102,13 +160,40 @@ ENDM
 ; by component. Also loads the query vector into ymm2 for
 ; compatibility with scalar compute methods.
 load_query_vector_transpose MACRO reg_source
+    query_vector_scalar = 0
+
     vbroadcastss ymm12, DWORD PTR [reg_source]
     vbroadcastss ymm13, DWORD PTR [reg_source + 4]
     vbroadcastss ymm14, DWORD PTR [reg_source + 8]
+ENDM
 
-    ; Unpack query vector into ymm2 for compatibility with scalar computation
-    vunpckhps ymm2, ymm12, ymm13
-    vblendps ymm2, ymm2, ymm14, 01000100b
+; Prepares the tail loop by ensuring that all required
+; elements are in place for scalar loop.
+;
+; This macro does the following:
+;   - if the query vector was not scalar, materialize the scalar version
+;     in xmm2 by blending from ymm12, ymm13, ymm14
+;   - if the problem is periodic, move the box extent into register xmm6
+;   - move the current best distance into register xmm5
+;
+prepare_tail_loop MACRO current_max_reg
+    if periodic
+        ; store box (from xmm2) into xmm6
+        vmovaps xmm6, xmm2
+        ; load mask
+        vmovaps xmm8, XMMWORD PTR [query_mask]
+    endif
+
+    if query_vector_scalar
+    else
+        ; Unpack query vector into ymm2 for compatibility with scalar computation
+        vunpckhps xmm2, xmm12, xmm13
+        vxorps xmm13, xmm13, xmm13
+        vblendps xmm2, xmm2, xmm14, 0100b
+        vblendps xmm2, xmm2, xmm13, 1000b
+    endif
+
+    vmovaps xmm5, current_max_reg
 ENDM
 
 ; Compares all distances to stored value in max_reg, and writes out result to mask_reg
@@ -191,8 +276,9 @@ tail_loop:
 ; Test for any iterations in tail loop
     cmp rcx, rdx
     je done
-; Tail loop (remainder)
-    vmovaps xmm5, current_max_reg_xmm
+
+; Prepare tail loop
+    prepare_tail_loop current_max_reg_xmm
 tail_loop_start:
     compute_distance_single xmm2
     ucomiss xmm0, xmm5
@@ -226,6 +312,8 @@ wenda_find_closest_l2_avx2 PROC PUBLIC FRAME
     save_xmm_registers rsp, 64 + 16, xmm6, xmm7, xmm8, xmm9, xmm10, xmm11, xmm12, xmm13, xmm14, xmm15
 .endprolog
 
+    periodic = 0
+
     ; Align rbp to 32-byte boundary.
     lea rbp, [rsp + 16]
     and rbp, -32
@@ -233,6 +321,8 @@ wenda_find_closest_l2_avx2 PROC PUBLIC FRAME
     indices_buffer EQU rbp
     distances_buffer EQU rbp + 32
 
+    ; To use horizontal operations (less efficent), uncomment below
+    ; find_closest_m load_query_vector, compute_l2, compute_l2_single
     find_closest_m load_query_vector_transpose, compute_l2_transpose, compute_l2_single
 done:
 ; Epilog
@@ -243,6 +333,46 @@ done:
     ret
 
 wenda_find_closest_l2_avx2 ENDP
+
+; Procedure for finding the closest element in positions to given query, under periodic boundary conditions.
+; C prototype: void find_closest_element_periodic(const char* positions, size_t n, const float* query, float boxsize)
+;
+; Arguments:
+;   - rcx: pointer to the positions array
+;   - rdx: length of positions array
+;   - r8: pointer to query vector
+;   - xmm3: boxsize
+wenda_find_closest_l2_periodic_avx2 PROC PUBLIC FRAME
+    stack_size = 64 + 10 * 16 + 16
+    push rbp
+.pushreg rbp
+    sub rsp, stack_size
+.allocstack stack_size
+.setframe rsp, 0
+    save_xmm_registers rsp, 64 + 16, xmm6, xmm7, xmm8, xmm9, xmm10, xmm11, xmm12, xmm13, xmm14, xmm15
+.endprolog
+
+    ; Align rbp to 32-byte boundary.
+    lea rbp, [rsp + 16]
+    and rbp, -32
+
+    indices_buffer EQU rbp
+    distances_buffer EQU rbp + 32
+
+    periodic = 1
+
+    ; Load periodic boundary from argument
+    vbroadcastss ymm2, xmm3
+
+    find_closest_m load_query_vector_transpose, compute_l2_periodic_transpose, compute_l2_periodic_single
+done:
+    ; Epilog
+    restore_xmm_registers rsp, 64 + 16, xmm6, xmm7, xmm8, xmm9, xmm10, xmm11, xmm12, xmm13, xmm14, xmm15
+    vzeroupper
+    add rsp, stack_size
+    pop rbp
+    ret
+wenda_find_closest_l2_periodic_avx2 ENDP
 
 ; Main procedure for finding k closest points to query vector,
 ;
