@@ -387,7 +387,7 @@ insert_closest_m MACRO load_query, compute_distance, compute_distance_single
     load_query r8
 
     ; Load current best distance from tree
-    vbroadcastss ymm9, DWORD PTR [r9]
+    vbroadcastss current_max_reg, DWORD PTR [r9]
 
     ; Load end pointer into rdx
     lea rdx, [rdx * 8]
@@ -398,9 +398,9 @@ insert_closest_m MACRO load_query, compute_distance, compute_distance_single
 
 loop_start:
     compute_distance
-    compare_distances ebx, ymm9, loop_end
+    compare_distances ebx, current_max_reg, loop_end
 scalar_insert_start:
-    scalar_insert_test ebx, xmm9, scalar_insert_end
+    scalar_insert_test ebx, current_max_reg_xmm, scalar_insert_end
 
     ; update tournament tree with new best
     mov esi, [indices_buffer + r10]
@@ -408,7 +408,7 @@ scalar_insert_start:
     tournament_tree_update_root_branchless_m r9, rdi, rsi, r11, r12, xmm3
 
     ; reload top value, xmm0 is updated by the tournament tree macros
-    vbroadcastss ymm9, xmm0
+    vbroadcastss current_max_reg, xmm0
 scalar_insert_end:
     scalar_insert_loop ebx, scalar_insert_start
 loop_end:
@@ -424,17 +424,17 @@ tail_loop:
     cmp rcx, rdx
     je done
 ; Tail loop (remainder)
-    vmovaps xmm5, xmm9
+    prepare_tail_loop current_max_reg_xmm
 tail_loop_start:
     compute_distance_single xmm2
-    ucomiss xmm0, xmm5
+    ucomiss xmm0, current_max_reg_xmm
     jae tail_end
 
     mov esi, DWORD PTR[rcx + 12]
     tournament_tree_swap_top_m r9, edi, xmm0, esi, r11
     tournament_tree_update_root_branchless_m r9, rdi, rsi, r11, r12, xmm3
 
-    vbroadcastss xmm5, xmm0
+    vmovaps current_max_reg_xmm, xmm0
 tail_end:
     add rcx, 16
     cmp rcx, rdx
@@ -451,7 +451,7 @@ ENDM
 ; Returns:
 ;   - rax: Index of the closest point
 wenda_insert_closest_l2_avx2 PROC PUBLIC FRAME
-    stack_size = 64 + 4 * 16 + 16
+    stack_size = 64 + 10 * 16 + 16
 
     FOR reg, <rbp,rbx,rdi,rsi,r12,r13,r14>
         push reg
@@ -460,21 +460,23 @@ wenda_insert_closest_l2_avx2 PROC PUBLIC FRAME
     sub rsp, stack_size ; reserve space for local variables and non-volatile registers
 .allocstack stack_size
 .setframe rsp, 0
-    save_xmm_registers rsp, 64 + 16, xmm6, xmm7, xmm8, xmm9
+    save_xmm_registers rsp, 64 + 16, xmm6, xmm7, xmm8, xmm9, xmm10, xmm11, xmm12, xmm13, xmm14, xmm15
 .endprolog
 
     ; Align rbp to 32-byte boundary
     lea rbp, [rsp + 16]
     and rbp, -32
 
+    periodic = 0
+
     indices_buffer EQU rbp
     distances_buffer EQU rbp + 32
 
-    insert_closest_m load_query_vector, compute_l2, compute_l2_single
+    insert_closest_m load_query_vector_transpose, compute_l2_transpose, compute_l2_single
 
 done:
 ; epilog
-    restore_xmm_registers rsp, 64 + 16, xmm6, xmm7, xmm8, xmm9
+    restore_xmm_registers rsp, 64 + 16, xmm6, xmm7, xmm8, xmm9, xmm10, xmm11, xmm12, xmm13, xmm14, xmm15
     vzeroupper
     add rsp, stack_size
     FOR reg, <r14,r13,r12,rsi,rdi,rbx,rbp>
@@ -482,6 +484,43 @@ done:
     ENDM
     ret
 wenda_insert_closest_l2_avx2 ENDP
+
+wenda_insert_closest_l2_periodic_avx2 PROC PUBLIC FRAME
+    stack_size = 64 + 10 * 16 + 16
+
+    FOR reg, <rbp,rbx,rdi,rsi,r12,r13,r14>
+        push reg
+        .pushreg reg
+    ENDM
+    sub rsp, stack_size
+.allocstack stack_size
+.setframe rsp, 0
+    save_xmm_registers rsp, 64 + 16, xmm6, xmm7, xmm8, xmm9, xmm10, xmm11, xmm12, xmm13, xmm14, xmm15
+.endprolog
+
+    periodic = 1
+    indices_buffer EQU rbp
+    distances_buffer EQU rbp + 32
+
+    ; Align rbp to 32-byte boundary
+    lea rbp, [rsp + 16]
+    and rbp, -32
+
+    ; load periodic boundary from argument (on stack)
+    vbroadcastss ymm2, DWORD PTR[rsp + stack_size + 7 * 8 + 5 * 8]
+
+    insert_closest_m load_query_vector_transpose, compute_l2_periodic_transpose, compute_l2_periodic_single
+done:
+; epilog
+    restore_xmm_registers rsp, 64 + 16, xmm6, xmm7, xmm8, xmm9, xmm10, xmm11, xmm12, xmm13, xmm14, xmm15
+    vzeroupper
+    add rsp, stack_size
+    FOR reg, <r14,r13,r12,rsi,rdi,rbx,rbp>
+        pop reg
+    ENDM
+    ret
+
+wenda_insert_closest_l2_periodic_avx2 ENDP
 
 ALIGN 16
 query_mask DWORD -1, -1, -1, 0
