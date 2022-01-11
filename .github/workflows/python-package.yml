@@ -30,6 +30,7 @@ jobs:
       run: python -m cibuildwheel --output-dir wheelhouse
       working-directory: ./kdtree
       env:
+        CIBW_BEFORE_ALL: yum install -y nasm
         CIBW_BUILD: 'cp37-* cp38-* cp39-*'
         CIBW_MANYLINUX_X86_64_IMAGE: manylinux2014
         CIBW_SKIP: "*-musllinux_*"
