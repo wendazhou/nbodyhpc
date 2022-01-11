@@ -421,7 +421,6 @@ wenda_insert_closest_l2_periodic_avx2:
     ret
 
 align 16
-static query_mask, flt_max
 query_mask:
     dd -1
     dd -1
