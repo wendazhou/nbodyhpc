@@ -85,7 +85,7 @@ tournament_tree_replace_top:
     tournament_tree_swap_top_m rdi, esi, xmm0, edx, rax
     jmp tournament_tree_update_root # tail call
 
-.macro compute_l2 out_reg = ymm3
+.macro transpose_registers
     # Transpose loaded values
     vshufps ymm8, ymm3, ymm4, 0x044
     vshufps ymm9, ymm3, ymm4, 0x0ee
@@ -96,6 +96,10 @@ tournament_tree_replace_top:
     vshufps ymm4, ymm8, ymm10, 0x0dd
     vshufps ymm5, ymm9, ymm11, 0x088
     vshufps ymm7, ymm9, ymm11, 0x0dd
+.endm
+
+.macro compute_l2 out_reg = ymm3
+    transpose_registers
 
     # Compute differences
     vsubps ymm3, ymm3, ymm12
@@ -112,6 +116,54 @@ tournament_tree_replace_top:
     vaddps \out_reg, ymm3, ymm5
 .endm
 
+.macro compute_l2_periodic
+    transpose_registers
+
+    # Compute differences
+    vsubps ymm3, ymm3, ymm12
+    vsubps ymm4, ymm4, ymm13
+    vsubps ymm5, ymm5, ymm14
+
+    # Compute squares (including periodic),
+    # and select smallest value
+.irp reg,ymm3,ymm4,ymm5
+    vsubps ymm8, \reg, ymm2
+    vaddps ymm9, \reg, ymm2
+    vmulps \reg, \reg, \reg
+    vmulps ymm8, ymm8, ymm8
+    vmulps ymm9, ymm9, ymm9
+    vminps \reg, \reg, ymm8
+    vminps \reg, \reg, ymm9
+.endr
+
+    # Compute sum
+    vaddps ymm3, ymm3, ymm4
+    vaddps ymm3, ymm3, ymm5
+.endm
+
+.macro compute_l2_single out_reg = xmm0
+    vmovups \out_reg, XMMWORD PTR [rdi]
+    vsubps \out_reg, \out_reg, xmm2
+    vdpps \out_reg, \out_reg, \out_reg, 0b01110001
+.endm
+
+.macro compute_l2_periodic_single
+    vmaskmovps xmm0, xmm8, XMMWORD PTR [rdi]
+    vsubps xmm0, xmm0, xmm2
+    vsubps xmm3, xmm0, xmm6
+    vaddps xmm4, xmm0, xmm6
+
+    vmulps xmm0, xmm0, xmm0
+    vmulps xmm3, xmm3, xmm3
+    vmulps xmm4, xmm4, xmm4
+
+    vminps xmm0, xmm0, xmm3
+    vminps xmm0, xmm0, xmm4
+
+    vhaddps xmm0, xmm0, xmm0
+    vhaddps xmm0, xmm0, xmm0
+.endm
+
 .macro load_query_vector
     vbroadcastss ymm12, DWORD PTR [rdx]
     vbroadcastss ymm13, DWORD PTR [rdx + 4]
@@ -125,6 +177,13 @@ tournament_tree_replace_top:
     vblendps xmm2, xmm2, xmm14, 0b0100
     vblendps xmm2, xmm2, xmm13, 0b1000
 .endm
+
+.macro prepare_tail_loop_periodic
+    vmovaps xmm6, xmm2
+    vmovaps xmm8, XMMWORD PTR[rip + query_mask]
+    prepare_tail_loop
+.endm
+
 
 .type wenda_insert_closest_l2_avx2, @function
 .global wenda_insert_closest_l2_avx2
@@ -239,14 +298,7 @@ wenda_insert_closest_l2_avx2:
 
     ret
 
-.type wenda_find_closest_l2_avx2, @function
-.global wenda_find_closest_l2_avx2
-wenda_find_closest_l2_avx2:
-    push rbp
-    mov rbp, rsp
-    sub rsp, 64 + 16
-    and rsp, -32
-
+.macro find_closest_m compute_distance, compute_distance_single, prepare_tail, epilog_label
     load_query_vector
     vbroadcastss ymm15, DWORD PTR [rip + flt_max]
 
@@ -262,7 +314,7 @@ wenda_find_closest_l2_avx2:
     vmovups ymm5, YMMWORD PTR [rdi + 64]
     vmovups ymm6, YMMWORD PTR [rdi + 96]
 
-    compute_l2
+    compute_distance
 
     vcmpltps ymm8, ymm3, ymm15
     vmovmskps eax, ymm8
@@ -297,23 +349,48 @@ wenda_find_closest_l2_avx2:
 4: # Tail handling start
     add rsi, 7 * 16 # Adjust end pointer to non-truncated value
     cmp rdi, rsi # Test if tail loop required
-    je 5f # epilog
+    je epilog_label # epilog
 
-    prepare_tail_loop
+    prepare_tail
 0:
-    vmovups xmm3, XMMWORD PTR [rdi]
-    vsubps xmm3, xmm3, xmm2
-    vdpps xmm3, xmm3, xmm3, 0b01110001
-    ucomiss xmm3, xmm5
+    compute_distance_single
+    ucomiss xmm0, xmm5
     jae 1f
 
-    vbroadcastss xmm5, xmm3
+    vmovaps xmm5, xmm0
     mov eax, DWORD PTR[rdi + 12]
 1:
     add rdi, 16
     cmp rdi, rsi
     jb 0b
 
+.endm
+
+.type wenda_find_closest_l2_avx2, @function
+.global wenda_find_closest_l2_avx2
+wenda_find_closest_l2_avx2:
+    push rbp
+    mov rbp, rsp
+    sub rsp, 64
+    and rsp, -32
+
+    find_closest_m compute_l2, compute_l2_single, prepare_tail_loop, 5f
+
+5:
+    vzeroupper
+    leave
+    ret
+
+.type wenda_find_closest_l2_periodic_avx2, @function
+.global wenda_find_closest_l2_periodic_avx2
+wenda_find_closest_l2_periodic_avx2:
+    push rbp
+    mov rbp, rsp
+    sub rsp, 64
+    and rsp, -32
+
+    vbroadcastss ymm2, xmm0
+    find_closest_m compute_l2_periodic, compute_l2_periodic_single, prepare_tail_loop_periodic, 5f
 5:
     vzeroupper
     leave
