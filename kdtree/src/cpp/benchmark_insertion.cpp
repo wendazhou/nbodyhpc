@@ -127,11 +127,44 @@ void Insertion(benchmark::State &state) {
 
     auto positions = kdt::make_random_position_and_index(num_points, 42);
     auto positions_span = tcb::make_span(positions);
-    std::array<float, 3> query = {0.5, 0.5, 0.5};
+    std::array<float, 3> query = {0.4, 0.5, 0.6};
 
     typedef InserterL2<InserterT, QueueT> Inserter;
     Inserter inserter;
     typename Inserter::distance_t distance;
+
+    Loop<Inserter> loop(inserter, distance, positions_span, query_size, 43);
+
+    uint32_t idx = 0;
+
+    for (auto _ : state) {
+        benchmark::DoNotOptimize(loop(idx, query));
+        idx += 1;
+    }
+
+    state.SetBytesProcessed(state.iterations() * query_size * sizeof(kdt::PositionAndIndex));
+}
+
+template <
+    template <typename, typename> typename InserterT, template <typename, typename> typename QueueT>
+using InserterL2Periodic = InserterT<
+    wenda::kdtree::L2PeriodicDistance<float>,
+    QueueT<std::pair<float, uint32_t>, wenda::kdtree::PairLessFirst>>;
+
+template <
+    template <typename, typename> typename InserterT, template <typename, typename> typename QueueT,
+    template <typename> typename Loop>
+void InsertionPeriodic(benchmark::State &state) {
+    size_t num_points = state.range(0);
+    size_t query_size = state.range(1);
+
+    auto positions = kdt::make_random_position_and_index(num_points, 42);
+    auto positions_span = tcb::make_span(positions);
+    std::array<float, 3> query = {0.4, 0.5, 0.6};
+
+    typedef InserterL2Periodic<InserterT, QueueT> Inserter;
+    Inserter inserter;
+    typename Inserter::distance_t distance{1.0f};
 
     Loop<Inserter> loop(inserter, distance, positions_span, query_size, 43);
 
@@ -230,19 +263,23 @@ void ComputeClosestAVX2(benchmark::State &state) {
 
 } // namespace
 
-#define DEFINE_BENCHMARKS_ALL_INSERTERS(Queue, Loop)                                               \
-    BENCHMARK_TEMPLATE(Insertion, kdt::InsertShorterDistanceVanilla, Queue, Loop)                  \
+#define DEFINE_BENCHMARKS_ALL_INSERTERS(Procedure, Queue, Loop)                                    \
+    BENCHMARK_TEMPLATE(Procedure, kdt::InsertShorterDistanceVanilla, Queue, Loop)                  \
         ->Args({1000000, 1024});                                                                   \
-    BENCHMARK_TEMPLATE(Insertion, kdt::InsertShorterDistanceUnrolled4, Queue, Loop)                \
+    BENCHMARK_TEMPLATE(Procedure, kdt::InsertShorterDistanceUnrolled4, Queue, Loop)                \
         ->Args({1000000, 1024});                                                                   \
-    BENCHMARK_TEMPLATE(Insertion, kdt::InsertShorterDistanceAVX, Queue, Loop)                      \
+    BENCHMARK_TEMPLATE(Procedure, kdt::InsertShorterDistanceAVX, Queue, Loop)                      \
         ->Args({1000000, 1024});                                                                   \
-    BENCHMARK_TEMPLATE(Insertion, kdt::InsertShorterDistanceAsmAvx2, Queue, Loop)                 \
+    BENCHMARK_TEMPLATE(Procedure, kdt::InsertShorterDistanceAsmAvx2, Queue, Loop)                  \
         ->Args({1000000, 1024});
 
-DEFINE_BENCHMARKS_ALL_INSERTERS(kdt::TournamentTree, RandomBlock)
-DEFINE_BENCHMARKS_ALL_INSERTERS(kdt::TournamentTree, Contiguous)
-DEFINE_BENCHMARKS_ALL_INSERTERS(kdt::TournamentTree, Cached)
+DEFINE_BENCHMARKS_ALL_INSERTERS(Insertion, kdt::TournamentTree, RandomBlock)
+// DEFINE_BENCHMARKS_ALL_INSERTERS(Insertion, kdt::TournamentTree, Contiguous)
+DEFINE_BENCHMARKS_ALL_INSERTERS(Insertion, kdt::TournamentTree, Cached)
+
+DEFINE_BENCHMARKS_ALL_INSERTERS(InsertionPeriodic, kdt::TournamentTree, RandomBlock)
+// DEFINE_BENCHMARKS_ALL_INSERTERS(InsertionPeriodic, kdt::TournamentTree, Contiguous)
+DEFINE_BENCHMARKS_ALL_INSERTERS(InsertionPeriodic, kdt::TournamentTree, Cached)
 
 #undef DEFINE_BENCHMARKS_ALL_INSERTERS
 
