@@ -44,7 +44,13 @@ TEST_P(KDTreeRandomTest, BuildAndFindNearestClass) {
     auto positions = wenda::kdtree::make_random_position_and_index(GetParam(), 42);
     std::array<float, 3> query = {0.4, 0.5, 0.6};
 
-    auto tree = wenda::kdtree::KDTree(std::vector(positions), {.leaf_size = 8});
+    int block_size = 4;
+    auto tree = wenda::kdtree::KDTree(std::vector(positions), {.leaf_size = 8, .block_size = block_size});
+
+    ASSERT_TRUE(std::all_of(tree.nodes().begin(), tree.nodes().end(), [block_size](auto const &node) {
+        return node.dimension_ != -1 || ((node.right_ - node.left_) % block_size == 0);
+    }));
+
     wenda::kdtree::KDTreeQueryStatistics statistics;
     auto result = tree.find_closest(query, 4, wenda::kdtree::L2Distance{}, &statistics);
 
@@ -52,22 +58,19 @@ TEST_P(KDTreeRandomTest, BuildAndFindNearestClass) {
 
     ASSERT_TRUE(std::is_sorted(result.begin(), result.end()));
 
-    ASSERT_FLOAT_EQ(result[0].first, naive_result[0].first);
-    ASSERT_FLOAT_EQ(result[1].first, naive_result[1].first);
-    ASSERT_FLOAT_EQ(result[2].first, naive_result[2].first);
-    ASSERT_FLOAT_EQ(result[3].first, naive_result[3].first);
-
-    ASSERT_EQ(result[0].second, naive_result[0].second);
-    ASSERT_EQ(result[1].second, naive_result[1].second);
-    ASSERT_EQ(result[2].second, naive_result[2].second);
-    ASSERT_EQ(result[3].second, naive_result[3].second);
+    ASSERT_EQ(result, naive_result);
 }
 
 TEST_P(KDTreeRandomTest, BuildAndFindNearestClassMT) {
     auto positions = wenda::kdtree::make_random_position_and_index(GetParam(), 42);
     std::array<float, 3> query = {0.5, 0.5, 0.5};
 
-    auto tree = wenda::kdtree::KDTree(std::vector(positions), {.leaf_size = 8, .max_threads = -1});
+    auto tree = wenda::kdtree::KDTree(std::vector(positions), {.leaf_size = 8, .max_threads = -1, .block_size = 8});
+
+    ASSERT_TRUE(std::all_of(tree.nodes().begin(), tree.nodes().end(), [](auto const &node) {
+        return node.dimension_ != -1 || ((node.right_ - node.left_) % 8 == 0);
+    }));
+
     wenda::kdtree::KDTreeQueryStatistics statistics;
     auto result = tree.find_closest(query, 4, wenda::kdtree::L2Distance{}, &statistics);
 
@@ -75,15 +78,7 @@ TEST_P(KDTreeRandomTest, BuildAndFindNearestClassMT) {
 
     ASSERT_TRUE(std::is_sorted(result.begin(), result.end()));
 
-    ASSERT_FLOAT_EQ(result[0].first, naive_result[0].first);
-    ASSERT_FLOAT_EQ(result[1].first, naive_result[1].first);
-    ASSERT_FLOAT_EQ(result[2].first, naive_result[2].first);
-    ASSERT_FLOAT_EQ(result[3].first, naive_result[3].first);
-
-    ASSERT_EQ(result[0].second, naive_result[0].second);
-    ASSERT_EQ(result[1].second, naive_result[1].second);
-    ASSERT_EQ(result[2].second, naive_result[2].second);
-    ASSERT_EQ(result[3].second, naive_result[3].second);
+    ASSERT_EQ(result, naive_result);
 }
 
 TEST_P(KDTreeRandomTest, BuildAndFindNearestPeriodic) {

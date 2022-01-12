@@ -31,12 +31,13 @@ template <typename Synchronization = MutexLockSynchronization> struct KDTreeBuil
     std::vector<KDTree::KDTreeNode> &nodes_;
     tcb::span<PositionAndIndex> positions_;
     size_t leaf_size_;
+    size_t block_size_;
     typename Synchronization::mutex_t mutex_;
 
     KDTreeBuilder(
         std::vector<KDTree::KDTreeNode> &nodes, tcb::span<PositionAndIndex> positions,
-        size_t leaf_size)
-        : nodes_(nodes), positions_(positions), leaf_size_(leaf_size) {}
+        size_t leaf_size, size_t block_size)
+        : nodes_(nodes), positions_(positions), leaf_size_(std::max(leaf_size, 2 * block_size)), block_size_(block_size) {}
 
     void build(int thread_levels) {
         build_node(0, 0, static_cast<uint32_t>(positions_.size()), thread_levels);
@@ -47,13 +48,17 @@ template <typename Synchronization = MutexLockSynchronization> struct KDTreeBuil
 
         auto positions = positions_.subspan(left, count);
 
-        if (positions.size() < leaf_size_) {
+        if (positions.size() <= leaf_size_) {
             lock_t lock(mutex_);
             nodes_.push_back({-1, 0.0f, left, left + count});
             return static_cast<uint32_t>(nodes_.size() - 1);
         }
 
-        auto median_it = positions.begin() + positions.size() / 2;
+        // Compute block-size rounded median.
+        uint32_t median_index = positions.size() / 2;
+        median_index = (median_index / block_size_) * block_size_;
+        auto median_it = positions.begin() + median_index;
+
         std::nth_element(
             positions.begin(),
             median_it,
@@ -76,9 +81,9 @@ template <typename Synchronization = MutexLockSynchronization> struct KDTreeBuil
 
         if (thread_levels > 0) {
             std::tie(left_idx, right_idx) =
-                build_left_right_threaded(dimension, left, count, thread_levels - 1);
+                build_left_right_threaded(dimension, left, median_index, count, thread_levels - 1);
         } else {
-            std::tie(left_idx, right_idx) = build_left_right_nonthreaded(dimension, left, count);
+            std::tie(left_idx, right_idx) = build_left_right_nonthreaded(dimension, left, median_index, count);
         }
 
         {
@@ -91,25 +96,25 @@ template <typename Synchronization = MutexLockSynchronization> struct KDTreeBuil
     }
 
     std::pair<uint32_t, uint32_t>
-    build_left_right_nonthreaded(int dimension, uint32_t left, uint32_t count) {
+    build_left_right_nonthreaded(int dimension, uint32_t left, uint32_t count_left, uint32_t count_total) {
         std::pair<uint32_t, uint32_t> result;
 
-        result.first = build_node((dimension + 1) % 3, left, count / 2, 0);
-        result.second = build_node((dimension + 1) % 3, left + count / 2, count - count / 2, 0);
+        result.first = build_node((dimension + 1) % 3, left, count_left, 0);
+        result.second = build_node((dimension + 1) % 3, left + count_left, count_total - count_left, 0);
 
         return result;
     }
 
     std::pair<uint32_t, uint32_t>
-    build_left_right_threaded(int dimension, uint32_t left, uint32_t count, int thread_levels) {
+    build_left_right_threaded(int dimension, uint32_t left, uint32_t count_left, uint32_t count_total, int thread_levels) {
         std::pair<uint32_t, uint32_t> result;
 
         std::future<uint32_t> left_future = std::async(std::launch::async, [&]() {
-            return build_node((dimension + 1) % 3, left, count / 2, thread_levels - 1);
+            return build_node((dimension + 1) % 3, left, count_left, thread_levels - 1);
         });
 
         result.second =
-            build_node((dimension + 1) % 3, left + count / 2, count - count / 2, thread_levels - 1);
+            build_node((dimension + 1) % 3, left + count_left, count_total - count_left, thread_levels - 1);
 
         result.first = left_future.get();
         return result;

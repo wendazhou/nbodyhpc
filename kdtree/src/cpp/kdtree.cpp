@@ -16,8 +16,8 @@
 
 #include "kdtree_impl.hpp"
 #include "kdtree_opt.hpp"
-#include "tournament_tree.hpp"
 #include "kdtree_utils.hpp"
+#include "tournament_tree.hpp"
 #include <span.hpp>
 
 namespace wenda {
@@ -51,6 +51,16 @@ KDTree::KDTree(
     int max_threads =
         config.max_threads == -1 ? std::thread::hardware_concurrency() : config.max_threads;
 
+    auto size_up = (positions_and_indices.size() + config.block_size - 1) / config.block_size *
+                   config.block_size;
+    positions_and_indices.resize(
+        size_up,
+        PositionAndIndex{
+            {std::numeric_limits<float>::max(),
+             std::numeric_limits<float>::max(),
+             std::numeric_limits<float>::max()},
+            -1u});
+
     if (max_threads > 1 && positions_and_indices.size() >= 2 * num_points_per_thread) {
         double num_threads = static_cast<double>(positions_.size()) / num_points_per_thread;
         num_threads = std::max(num_threads, static_cast<double>(max_threads));
@@ -58,10 +68,12 @@ KDTree::KDTree(
         int log2_threads = static_cast<int>(std::log2(num_threads));
 
         typedef detail::MutexLockSynchronization Synchronization;
-        detail::KDTreeBuilder<Synchronization> builder(nodes_, positions_and_indices, config.leaf_size);
+        detail::KDTreeBuilder<Synchronization> builder(
+            nodes_, positions_and_indices, config.leaf_size, config.block_size);
         builder.build(log2_threads);
     } else {
-        detail::KDTreeBuilder<detail::NullSynchonization> builder(nodes_, positions_and_indices, config.leaf_size);
+        detail::KDTreeBuilder<detail::NullSynchonization> builder(
+            nodes_, positions_and_indices, config.leaf_size, config.block_size);
         builder.build(0);
     }
 
@@ -75,8 +87,9 @@ std::vector<std::pair<float, uint32_t>> KDTree::find_closest(
 
     typedef std::pair<float, uint32_t> result_t;
 
-    detail::KDTreeQuery<Distance, TournamentTree<result_t, PairLessFirst>, InsertShorterDistanceVanilla>
-        query(*this, distance, position, k);
+    detail::
+        KDTreeQuery<Distance, TournamentTree<result_t, PairLessFirst>, InsertShorterDistanceVanilla>
+            query(*this, distance, position, k);
     query.compute(&nodes_[0]);
 
     if (statistics) {

@@ -131,6 +131,8 @@ struct KDTreeConfiguration {
     int leaf_size = 64;
     //! Maximum number of threads to use during tree construction. If -1, use all available threads.
     int max_threads = 0;
+    //! All leaf nodes must have a number of points which is divisible by this quantity.
+    int block_size = 8;
 };
 
 struct alignas(16) PositionAndIndex {
