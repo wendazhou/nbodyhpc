@@ -6,7 +6,6 @@
 #include "kdtree.hpp"
 #include "kdtree_impl.hpp"
 #include "kdtree_opt.hpp"
-#include "kdtree_opt_asm.hpp"
 #include "kdtree_utils.hpp"
 
 namespace kdt = wenda::kdtree;
@@ -47,9 +46,7 @@ template <template <typename, typename> typename Inserter> struct InserterL2Hold
 
 using InsertersL2 = ::testing::Types<
     InserterL2Holder<kdt::InsertShorterDistanceVanilla>,
-    InserterL2Holder<kdt::InsertShorterDistanceAVX>,
-    InserterL2Holder<kdt::InsertShorterDistanceUnrolled4>,
-    InserterL2Holder<kdt::InsertShorterDistanceAsmAvx2>>;
+    InserterL2Holder<kdt::InsertShorterDistanceUnrolled4>>;
 
 template <template <typename, typename> typename Inserter> struct InserterL2PeriodicHolder {
     typedef std::pair<float, uint32_t> result_t;
@@ -60,9 +57,7 @@ template <template <typename, typename> typename Inserter> struct InserterL2Peri
 
 using InsertersL2Periodic = ::testing::Types<
     InserterL2PeriodicHolder<kdt::InsertShorterDistanceVanilla>,
-    InserterL2PeriodicHolder<kdt::InsertShorterDistanceAVX>,
-    InserterL2PeriodicHolder<kdt::InsertShorterDistanceUnrolled4>,
-    InserterL2PeriodicHolder<kdt::InsertShorterDistanceAsmAvx2>>;
+    InserterL2PeriodicHolder<kdt::InsertShorterDistanceUnrolled4>>;
 
 } // namespace
 

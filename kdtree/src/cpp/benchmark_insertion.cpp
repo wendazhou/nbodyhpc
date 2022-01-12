@@ -10,7 +10,6 @@
 
 #include "kdtree.hpp"
 #include "kdtree_opt.hpp"
-#include "kdtree_opt_asm.hpp"
 #include "kdtree_utils.hpp"
 #include "tournament_tree.hpp"
 
@@ -26,21 +25,21 @@ namespace {
  * making it possible for those to be held in fast cache.
  *
  */
-template <typename Inserter> struct Cached {
-    tcb::span<const kdt::PositionAndIndex> positions_;
+template <typename Inserter, typename ContainerT> struct Cached {
+    ContainerT const& positions_;
     Inserter &inserter_;
     typename Inserter::distance_t distance_;
     uint32_t query_size_;
 
     Cached(
         Inserter &inserter, typename Inserter::distance_t distance,
-        tcb::span<const kdt::PositionAndIndex> positions, uint32_t query_size, unsigned int)
+        ContainerT const& positions, uint32_t query_size, unsigned int)
         : positions_(positions), inserter_(inserter), distance_(distance), query_size_(query_size) {
     }
 
     float operator()(uint32_t index, std::array<float, 3> const &query) {
         typename Inserter::queue_t queue(32, {std::numeric_limits<float>::max(), -1});
-        inserter_(positions_.subspan(0, query_size_), query, queue, distance_);
+        inserter_(kdt::OffsetRangeContainerWrapper{positions_, 0, query_size_}, query, queue, distance_);
         return queue.top().first;
     }
 };
@@ -50,15 +49,15 @@ template <typename Inserter> struct Cached {
  * favourable to the prefetcher, but still requires memory bandwidth.
  *
  */
-template <typename Inserter> struct Contiguous {
-    tcb::span<const kdt::PositionAndIndex> positions_;
+template <typename Inserter, typename ContainerT> struct Contiguous {
+    ContainerT const& positions_;
     Inserter &inserter_;
     typename Inserter::distance_t distance_;
     uint32_t query_size_;
 
     Contiguous(
         Inserter &inserter, typename Inserter::distance_t distance,
-        tcb::span<const kdt::PositionAndIndex> positions, uint32_t query_size, unsigned int)
+        ContainerT const& positions, uint32_t query_size, unsigned int)
         : positions_(positions), inserter_(inserter), distance_(distance), query_size_(query_size) {
     }
 
@@ -66,7 +65,7 @@ template <typename Inserter> struct Contiguous {
         typename Inserter::queue_t queue(32, {std::numeric_limits<float>::max(), -1});
         auto offset = (index * query_size_) % (positions_.size() - query_size_);
 
-        inserter_(positions_.subspan(offset, query_size_), query, queue, distance_);
+        inserter_(kdt::OffsetRangeContainerWrapper{positions_, offset, query_size_}, query, queue, distance_);
         return queue.top().first;
     }
 };
@@ -77,20 +76,20 @@ template <typename Inserter> struct Contiguous {
  * use.
  *
  */
-template <typename Inserter> struct RandomBlock {
+template <typename Inserter, typename ContainerT> struct RandomBlock {
     typedef r123::Philox4x32 RNG;
 
     RNG::ukey_type uk_ = {{}};
     RNG rng_;
 
-    tcb::span<const kdt::PositionAndIndex> positions_;
+    ContainerT const& positions_;
     Inserter &inserter_;
     typename Inserter::distance_t distance_;
     uint32_t query_size_;
 
     RandomBlock(
         Inserter &inserter, typename Inserter::distance_t distance,
-        tcb::span<const kdt::PositionAndIndex> positions, uint32_t query_size, unsigned int seed)
+        ContainerT const& positions, uint32_t query_size, unsigned int seed)
         : positions_(positions), inserter_(inserter), distance_(distance), query_size_(query_size) {
         uk_[0] = seed;
     }
@@ -104,7 +103,7 @@ template <typename Inserter> struct RandomBlock {
         auto r = rng_(c, uk_);
         auto offset = r[0] % (positions_.size() - query_size_);
 
-        inserter_(positions_.subspan(offset, query_size_), query, queue, distance_);
+        inserter_(kdt::OffsetRangeContainerWrapper{positions_, offset, query_size_}, query, queue, distance_);
 
         return queue.top().first;
     }
@@ -120,20 +119,19 @@ using InserterL2 = Inserter<
  */
 template <
     template <typename, typename> typename InserterT, template <typename, typename> typename QueueT,
-    template <typename> typename Loop>
+    template <typename, typename> typename Loop>
 void Insertion(benchmark::State &state) {
     size_t num_points = state.range(0);
     size_t query_size = state.range(1);
 
     auto positions = kdt::make_random_position_and_index(num_points, 42);
-    auto positions_span = tcb::make_span(positions);
     std::array<float, 3> query = {0.4, 0.5, 0.6};
 
     typedef InserterL2<InserterT, QueueT> Inserter;
     Inserter inserter;
     typename Inserter::distance_t distance;
 
-    Loop<Inserter> loop(inserter, distance, positions_span, query_size, 43);
+    Loop<Inserter, decltype(positions)> loop(inserter, distance, positions, query_size, 43);
 
     uint32_t idx = 0;
 
@@ -153,20 +151,19 @@ using InserterL2Periodic = InserterT<
 
 template <
     template <typename, typename> typename InserterT, template <typename, typename> typename QueueT,
-    template <typename> typename Loop>
+    template <typename, typename> typename Loop>
 void InsertionPeriodic(benchmark::State &state) {
     size_t num_points = state.range(0);
     size_t query_size = state.range(1);
 
     auto positions = kdt::make_random_position_and_index(num_points, 42);
-    auto positions_span = tcb::make_span(positions);
     std::array<float, 3> query = {0.4, 0.5, 0.6};
 
     typedef InserterL2Periodic<InserterT, QueueT> Inserter;
     Inserter inserter;
     typename Inserter::distance_t distance{1.0f};
 
-    Loop<Inserter> loop(inserter, distance, positions_span, query_size, 43);
+    Loop<Inserter, decltype(positions)> loop(inserter, distance, positions, query_size, 43);
 
     uint32_t idx = 0;
 
@@ -268,10 +265,6 @@ void ComputeClosestAVX2(benchmark::State &state) {
         ->Args({1000000, 1024});                                                                   \
     BENCHMARK_TEMPLATE(Procedure, kdt::InsertShorterDistanceUnrolled4, Queue, Loop)                \
         ->Args({1000000, 1024});                                                                   \
-    BENCHMARK_TEMPLATE(Procedure, kdt::InsertShorterDistanceAVX, Queue, Loop)                      \
-        ->Args({1000000, 1024});                                                                   \
-    BENCHMARK_TEMPLATE(Procedure, kdt::InsertShorterDistanceAsmAvx2, Queue, Loop)                  \
-        ->Args({1000000, 1024});
 
 DEFINE_BENCHMARKS_ALL_INSERTERS(Insertion, kdt::TournamentTree, RandomBlock)
 // DEFINE_BENCHMARKS_ALL_INSERTERS(Insertion, kdt::TournamentTree, Contiguous)

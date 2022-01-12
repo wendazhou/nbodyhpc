@@ -126,7 +126,7 @@ struct KDTreeQuery {
     typedef QueueT queue_t;
 
     DistanceT const &distance_;
-    tcb::span<const PositionAndIndex> positions_;
+    PositionAndIndexArray<3> const& positions_;
     tcb::span<const KDTree::KDTreeNode> nodes_;
     std::array<float, 3> const &query_;
     QueueT distances_;
@@ -141,7 +141,7 @@ struct KDTreeQuery {
 
     void process_leaf(KDTree::KDTreeNode const &node) {
         uint32_t const num_points = node.right_ - node.left_;
-        auto node_positions = positions_.subspan(node.left_, num_points);
+        auto node_positions = OffsetRangeContainerWrapper{positions_, node.left_, num_points};
 
         InserterT<DistanceT, QueueT> insert_shorter_distance;
         insert_shorter_distance(node_positions, query_, distances_, distance_);

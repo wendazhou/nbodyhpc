@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <limits>
@@ -55,7 +56,8 @@ struct L2Distance {
     }
 };
 
-//! This structure encapsulates information to compute l2 distance with periodic boundary conditions.
+//! This structure encapsulates information to compute l2 distance with periodic boundary
+//! conditions.
 template <typename T> struct L2PeriodicDistance {
     //! Size of the box for periodic boundary conditions.
     T box_size_;
@@ -76,7 +78,8 @@ template <typename T> struct L2PeriodicDistance {
         return result;
     }
 
-    //! Computes the distance from a point to an axis-aligned box which does not cross the periodic boundary.
+    //! Computes the distance from a point to an axis-aligned box which does not cross the periodic
+    //! boundary.
     template <size_t R>
     T box_distance(std::array<T, R> const &point, std::array<T, 2 * R> const &box) const {
         T result = 0;
@@ -135,6 +138,67 @@ struct alignas(16) PositionAndIndex {
     uint32_t index;
 };
 
+template <typename T> struct OffsetRangeContainerWrapper {
+    T &container_;
+    size_t offset;
+    size_t count;
+
+    decltype(auto) begin() { return container_.begin() + offset; }
+    decltype(auto) begin() const { return container_.begin() + offset; }
+    decltype(auto) end() { return container_.begin() + offset + count; }
+    decltype(auto) end() const { return container_.begin() + offset + count; }
+
+    decltype(auto) operator[](size_t i) { return container_[offset + i]; }
+    decltype(auto) operator[](size_t i) const { return container_[offset + i]; }
+
+    size_t size() const { return count; }
+};
+
+template <size_t R = 3, typename T = float, typename IndexT = uint32_t>
+struct PositionAndIndexArray {
+    struct PositionAndIndexProxy {
+        std::array<std::reference_wrapper<float>, R> position;
+        uint32_t &index;
+    };
+
+    std::array<std::vector<T>, R> positions_;
+    std::vector<IndexT> indices_;
+
+    PositionAndIndexArray() = default;
+    PositionAndIndexArray(PositionAndIndexArray const &) = default;
+    PositionAndIndexArray(PositionAndIndexArray &&) = default;
+
+    PositionAndIndexArray &operator=(PositionAndIndexArray const &) = default;
+    PositionAndIndexArray &operator=(PositionAndIndexArray &&) = default;
+
+    explicit PositionAndIndexArray(std::vector<PositionAndIndex> positions) : positions_{std::vector<T>(positions.size()), std::vector<T>(positions.size()), std::vector<T>(positions.size())}, indices_(positions.size())  {
+        for (size_t i = 0; i < R; ++i) {
+            std::transform(
+                positions.begin(),
+                positions.end(),
+                positions_[i].begin(),
+                [i](PositionAndIndex const &p) { return p.position[i]; });
+        }
+
+        std::transform(
+            positions.begin(), positions.end(), indices_.begin(), [](PositionAndIndex const &p) {
+                return p.index;
+            });
+    }
+
+    size_t size() const { return indices_.size(); }
+
+    PositionAndIndexProxy operator[](size_t i) {
+        return PositionAndIndexProxy{
+            {positions_[0][i], positions_[1][i], positions_[2][i]}, indices_[i]};
+    }
+
+    PositionAndIndex operator[](size_t i) const {
+        return PositionAndIndex{
+            {positions_[0][i], positions_[1][i], positions_[2][i]}, indices_[i]};
+    }
+};
+
 class KDTree {
   public:
     /** This structure represents a single node in the KD-tree
@@ -158,7 +222,7 @@ class KDTree {
 
   private:
     std::vector<KDTreeNode> nodes_;
-    std::vector<PositionAndIndex> positions_;
+    PositionAndIndexArray<3, float> positions_;
 
   public:
     /** Builds a new KD-tree from the given positions.
@@ -169,21 +233,23 @@ class KDTree {
     KDTree(tcb::span<const std::array<float, 3>> positions, KDTreeConfiguration const &config = {});
 
     /** Builds a new KD-tree from the given positions.
-     * 
+     *
      * This constructor makes use of a pre-allocated positions vector.
      * To build from an array of positions, see other constructor.
-     * 
+     *
      * @param positions_and_indices The positions and indices to build the tree from.
      * @param config Configuration to use when building the tree.
-     * 
+     *
      */
-    KDTree(std::vector<PositionAndIndex>&& positions_and_indices, KDTreeConfiguration const &config = {});
+    KDTree(
+        std::vector<PositionAndIndex> &&positions_and_indices,
+        KDTreeConfiguration const &config = {});
 
     KDTree(KDTree const &) = default;
     KDTree(KDTree &&) noexcept = default;
 
     tcb::span<const KDTreeNode> nodes() const noexcept { return nodes_; }
-    tcb::span<const PositionAndIndex> positions() const noexcept { return positions_; }
+    PositionAndIndexArray<3> const &positions() const noexcept { return positions_; }
 
     /** Searches the tree for the nearest neighbors of the given query point.
      *
@@ -207,7 +273,8 @@ extern template std::vector<std::pair<float, uint32_t>> KDTree::find_closest<L2D
     std::array<float, 3> const &position, size_t k, L2Distance const &,
     KDTreeQueryStatistics *statistics) const;
 
-extern template std::vector<std::pair<float, uint32_t>> KDTree::find_closest<L2PeriodicDistance<float>>(
+extern template std::vector<std::pair<float, uint32_t>>
+KDTree::find_closest<L2PeriodicDistance<float>>(
     std::array<float, 3> const &position, size_t k, L2PeriodicDistance<float> const &,
     KDTreeQueryStatistics *statistics) const;
 
