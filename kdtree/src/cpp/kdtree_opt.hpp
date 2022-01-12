@@ -121,7 +121,7 @@ template <typename QueueT> struct InsertShorterDistanceAVX<L2Distance, QueueT> {
 
         std::array<const float *, 3> positions_ptr;
         for (size_t i = 0; i < 3; ++i) {
-            positions_ptr[i] = positions.container_.positions_[i].data() + positions.offset;
+            positions_ptr[i] = positions.container_.positions_[i] + positions.offset;
         }
 
         const uint32_t *indices_ptr = positions.container_.indices_.data() + positions.offset;
@@ -135,9 +135,9 @@ template <typename QueueT> struct InsertShorterDistanceAVX<L2Distance, QueueT> {
         alignas(32) float distances_buffer[8];
 
         for (size_t i = 0; i < num_points - 7; i += 8) {
-            __m256 x = _mm256_loadu_ps(positions_ptr[0] + i);
-            __m256 y = _mm256_loadu_ps(positions_ptr[1] + i);
-            __m256 z = _mm256_loadu_ps(positions_ptr[2] + i);
+            __m256 x = _mm256_load_ps(positions_ptr[0] + i);
+            __m256 y = _mm256_load_ps(positions_ptr[1] + i);
+            __m256 z = _mm256_load_ps(positions_ptr[2] + i);
 
             __m256 dx = _mm256_sub_ps(x, qx);
             __m256 dy = _mm256_sub_ps(y, qy);

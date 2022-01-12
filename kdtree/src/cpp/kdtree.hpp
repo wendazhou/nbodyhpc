@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdlib>
 #include <limits>
 #include <vector>
 
@@ -10,6 +11,20 @@
 
 namespace wenda {
 namespace kdtree {
+
+#ifdef _MSC_VER
+inline void *aligned_alloc(size_t alignment, size_t size) {
+    return _aligned_malloc(size, alignment);
+}
+
+inline void aligned_free(void *ptr) { _aligned_free(ptr); }
+#else
+inline void *aligned_alloc(size_t alignment, size_t size) {
+    return std::aligned_alloc(alignment, size);
+}
+
+inline void aligned_free(void *ptr) { return free(ptr); }
+#endif
 
 //! This structure encapsulates information to compute the l2 distance between two points.
 struct L2Distance {
@@ -145,7 +160,8 @@ template <typename T> struct OffsetRangeContainerWrapper {
     size_t offset;
     size_t count;
 
-    OffsetRangeContainerWrapper(T& container) : container_(container), offset(0), count(container.size()) {}
+    OffsetRangeContainerWrapper(T &container)
+        : container_(container), offset(0), count(container.size()) {}
     OffsetRangeContainerWrapper(T &container, size_t offset, size_t count)
         : container_(container), offset(offset), count(count) {}
 
@@ -167,33 +183,49 @@ struct PositionAndIndexArray {
         uint32_t &index;
     };
 
-    std::array<std::vector<T>, R> positions_;
+    std::array<T *, R> positions_;
     std::vector<IndexT> indices_;
 
     PositionAndIndexArray() = default;
-    PositionAndIndexArray(PositionAndIndexArray const &) = default;
-    PositionAndIndexArray(PositionAndIndexArray &&) = default;
+    PositionAndIndexArray(PositionAndIndexArray const &) = delete;
+    PositionAndIndexArray(PositionAndIndexArray &&other)
+        : positions_(std::move(other.positions_)), indices_(std::move(other.indices_)) {
+        std::fill(other.positions_.begin(), other.positions_.end(), nullptr);
+    }
 
-    PositionAndIndexArray &operator=(PositionAndIndexArray const &) = default;
-    PositionAndIndexArray &operator=(PositionAndIndexArray &&) = default;
+    PositionAndIndexArray &operator=(PositionAndIndexArray const &) = delete;
+    PositionAndIndexArray &operator=(PositionAndIndexArray && other) {
+        std::swap(positions_, other.positions_);
+        std::swap(indices_, other.indices_);
 
-    template<typename Container>
-    explicit PositionAndIndexArray(Container const& positions) : positions_{std::vector<T>(std::size(positions)), std::vector<T>(std::size(positions)), std::vector<T>(std::size(positions))}, indices_(std::size(positions))  {
+        return *this;
+    }
+
+    template <typename Container>
+    explicit PositionAndIndexArray(Container const &positions) : indices_(std::size(positions)) {
         using std::begin;
         using std::end;
 
         for (size_t i = 0; i < R; ++i) {
+            positions_[i] = static_cast<T *>(aligned_alloc(64, sizeof(T) * std::size(positions)));
+
             std::transform(
-                begin(positions),
-                end(positions),
-                positions_[i].begin(),
-                [i](PositionAndIndex const &p) { return p.position[i]; });
+                positions.begin(), positions.end(), positions_[i], [i](PositionAndIndex const &p) {
+                    return p.position[i];
+                });
         }
 
         std::transform(
             begin(positions), end(positions), indices_.begin(), [](PositionAndIndex const &p) {
                 return p.index;
             });
+    }
+
+    ~PositionAndIndexArray() {
+        for (auto &position_ptr : positions_) {
+            aligned_free(position_ptr);
+            position_ptr = nullptr;
+        }
     }
 
     size_t size() const { return indices_.size(); }
