@@ -20,6 +20,8 @@ inline void *aligned_alloc(size_t alignment, size_t size) {
 inline void aligned_free(void *ptr) { _aligned_free(ptr); }
 #else
 inline void *aligned_alloc(size_t alignment, size_t size) {
+    // round up size to next multiple of alignment
+    size = (size + alignment - 1) & ~(alignment - 1);
     return std::aligned_alloc(alignment, size);
 }
 
