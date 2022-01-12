@@ -26,20 +26,21 @@ namespace {
  *
  */
 template <typename Inserter, typename ContainerT> struct Cached {
-    ContainerT const& positions_;
+    ContainerT const &positions_;
     Inserter &inserter_;
     typename Inserter::distance_t distance_;
     uint32_t query_size_;
 
     Cached(
-        Inserter &inserter, typename Inserter::distance_t distance,
-        ContainerT const& positions, uint32_t query_size, unsigned int)
+        Inserter &inserter, typename Inserter::distance_t distance, ContainerT const &positions,
+        uint32_t query_size, unsigned int)
         : positions_(positions), inserter_(inserter), distance_(distance), query_size_(query_size) {
     }
 
     float operator()(uint32_t index, std::array<float, 3> const &query) {
         typename Inserter::queue_t queue(32, {std::numeric_limits<float>::max(), -1});
-        inserter_(kdt::OffsetRangeContainerWrapper{positions_, 0, query_size_}, query, queue, distance_);
+        inserter_(
+            kdt::OffsetRangeContainerWrapper{positions_, 0, query_size_}, query, queue, distance_);
         return queue.top().first;
     }
 };
@@ -50,14 +51,14 @@ template <typename Inserter, typename ContainerT> struct Cached {
  *
  */
 template <typename Inserter, typename ContainerT> struct Contiguous {
-    ContainerT const& positions_;
+    ContainerT const &positions_;
     Inserter &inserter_;
     typename Inserter::distance_t distance_;
     uint32_t query_size_;
 
     Contiguous(
-        Inserter &inserter, typename Inserter::distance_t distance,
-        ContainerT const& positions, uint32_t query_size, unsigned int)
+        Inserter &inserter, typename Inserter::distance_t distance, ContainerT const &positions,
+        uint32_t query_size, unsigned int)
         : positions_(positions), inserter_(inserter), distance_(distance), query_size_(query_size) {
     }
 
@@ -65,7 +66,11 @@ template <typename Inserter, typename ContainerT> struct Contiguous {
         typename Inserter::queue_t queue(32, {std::numeric_limits<float>::max(), -1});
         auto offset = (index * query_size_) % (positions_.size() - query_size_);
 
-        inserter_(kdt::OffsetRangeContainerWrapper{positions_, offset, query_size_}, query, queue, distance_);
+        inserter_(
+            kdt::OffsetRangeContainerWrapper{positions_, offset, query_size_},
+            query,
+            queue,
+            distance_);
         return queue.top().first;
     }
 };
@@ -82,14 +87,14 @@ template <typename Inserter, typename ContainerT> struct RandomBlock {
     RNG::ukey_type uk_ = {{}};
     RNG rng_;
 
-    ContainerT const& positions_;
+    ContainerT const &positions_;
     Inserter &inserter_;
     typename Inserter::distance_t distance_;
     uint32_t query_size_;
 
     RandomBlock(
-        Inserter &inserter, typename Inserter::distance_t distance,
-        ContainerT const& positions, uint32_t query_size, unsigned int seed)
+        Inserter &inserter, typename Inserter::distance_t distance, ContainerT const &positions,
+        uint32_t query_size, unsigned int seed)
         : positions_(positions), inserter_(inserter), distance_(distance), query_size_(query_size) {
         uk_[0] = seed;
     }
@@ -103,7 +108,11 @@ template <typename Inserter, typename ContainerT> struct RandomBlock {
         auto r = rng_(c, uk_);
         auto offset = r[0] % (positions_.size() - query_size_);
 
-        inserter_(kdt::OffsetRangeContainerWrapper{positions_, offset, query_size_}, query, queue, distance_);
+        inserter_(
+            kdt::OffsetRangeContainerWrapper{positions_, offset, query_size_},
+            query,
+            queue,
+            distance_);
 
         return queue.top().first;
     }
@@ -124,7 +133,10 @@ void Insertion(benchmark::State &state) {
     size_t num_points = state.range(0);
     size_t query_size = state.range(1);
 
-    auto positions = kdt::make_random_position_and_index(num_points, 42);
+    // force 32-element alignment
+    num_points = (num_points / 32) * 32;
+
+    auto positions = kdt::PositionAndIndexArray(kdt::make_random_position_and_index(num_points, 42));
     std::array<float, 3> query = {0.4, 0.5, 0.6};
 
     typedef InserterL2<InserterT, QueueT> Inserter;
@@ -156,7 +168,10 @@ void InsertionPeriodic(benchmark::State &state) {
     size_t num_points = state.range(0);
     size_t query_size = state.range(1);
 
-    auto positions = kdt::make_random_position_and_index(num_points, 42);
+    // force 32-element alignment
+    num_points = (num_points / 32) * 32;
+
+    auto positions = kdt::PositionAndIndexArray(kdt::make_random_position_and_index(num_points, 42));
     std::array<float, 3> query = {0.4, 0.5, 0.6};
 
     typedef InserterL2Periodic<InserterT, QueueT> Inserter;
@@ -265,6 +280,8 @@ void ComputeClosestAVX2(benchmark::State &state) {
         ->Args({1000000, 1024});                                                                   \
     BENCHMARK_TEMPLATE(Procedure, kdt::InsertShorterDistanceUnrolled4, Queue, Loop)                \
         ->Args({1000000, 1024});                                                                   \
+    BENCHMARK_TEMPLATE(Procedure, kdt::InsertShorterDistanceAVX, Queue, Loop)                      \
+        ->Args({1000000, 1024});
 
 DEFINE_BENCHMARKS_ALL_INSERTERS(Insertion, kdt::TournamentTree, RandomBlock)
 // DEFINE_BENCHMARKS_ALL_INSERTERS(Insertion, kdt::TournamentTree, Contiguous)

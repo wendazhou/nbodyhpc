@@ -145,6 +145,10 @@ template <typename T> struct OffsetRangeContainerWrapper {
     size_t offset;
     size_t count;
 
+    OffsetRangeContainerWrapper(T& container) : container_(container), offset(0), count(container.size()) {}
+    OffsetRangeContainerWrapper(T &container, size_t offset, size_t count)
+        : container_(container), offset(offset), count(count) {}
+
     decltype(auto) begin() { return container_.begin() + offset; }
     decltype(auto) begin() const { return container_.begin() + offset; }
     decltype(auto) end() { return container_.begin() + offset + count; }
@@ -173,17 +177,21 @@ struct PositionAndIndexArray {
     PositionAndIndexArray &operator=(PositionAndIndexArray const &) = default;
     PositionAndIndexArray &operator=(PositionAndIndexArray &&) = default;
 
-    explicit PositionAndIndexArray(std::vector<PositionAndIndex> positions) : positions_{std::vector<T>(positions.size()), std::vector<T>(positions.size()), std::vector<T>(positions.size())}, indices_(positions.size())  {
+    template<typename Container>
+    explicit PositionAndIndexArray(Container const& positions) : positions_{std::vector<T>(std::size(positions)), std::vector<T>(std::size(positions)), std::vector<T>(std::size(positions))}, indices_(std::size(positions))  {
+        using std::begin;
+        using std::end;
+
         for (size_t i = 0; i < R; ++i) {
             std::transform(
-                positions.begin(),
-                positions.end(),
+                begin(positions),
+                end(positions),
                 positions_[i].begin(),
                 [i](PositionAndIndex const &p) { return p.position[i]; });
         }
 
         std::transform(
-            positions.begin(), positions.end(), indices_.begin(), [](PositionAndIndex const &p) {
+            begin(positions), end(positions), indices_.begin(), [](PositionAndIndex const &p) {
                 return p.index;
             });
     }

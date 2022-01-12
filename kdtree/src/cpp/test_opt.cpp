@@ -22,8 +22,9 @@ std::vector<std::pair<float, uint32_t>> find_nearest_inserter(tcb::span<const we
     QueueT queue(k, {std::numeric_limits<float>::max(), -1});
 
     Inserter<DistanceT, QueueT> inserter;
+    auto positions_soa = PositionAndIndexArray(positions);
 
-    inserter(positions, query, queue, distance);
+    inserter(positions_soa, query, queue, distance);
 
     std::vector<std::pair<float, uint32_t>> result(k);
     queue.copy_values(result.begin());

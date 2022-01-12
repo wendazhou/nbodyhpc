@@ -46,7 +46,8 @@ template <template <typename, typename> typename Inserter> struct InserterL2Hold
 
 using InsertersL2 = ::testing::Types<
     InserterL2Holder<kdt::InsertShorterDistanceVanilla>,
-    InserterL2Holder<kdt::InsertShorterDistanceUnrolled4>>;
+    InserterL2Holder<kdt::InsertShorterDistanceUnrolled4>,
+    InserterL2Holder<kdt::InsertShorterDistanceAVX>>;
 
 template <template <typename, typename> typename Inserter> struct InserterL2PeriodicHolder {
     typedef std::pair<float, uint32_t> result_t;
