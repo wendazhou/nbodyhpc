@@ -105,7 +105,7 @@ template <typename DistanceT, typename QueueT>
 using InsertShorterDistanceUnrolled8 = InsertShorterDistanceUnrolled<DistanceT, QueueT, 8>;
 
 template <typename DistanceT, typename QueueT>
-struct InsertShorterDistanceAVX : InsertShorterDistanceUnrolled<DistanceT, QueueT, 4> {};
+struct InsertShorterDistanceAVX;
 
 template <typename QueueT> struct InsertShorterDistanceAVX<L2Distance, QueueT> {
     typedef L2Distance distance_t;
@@ -145,6 +145,83 @@ template <typename QueueT> struct InsertShorterDistanceAVX<L2Distance, QueueT> {
 
             __m256 dist = _mm256_add_ps(
                 _mm256_add_ps(_mm256_mul_ps(dx, dx), _mm256_mul_ps(dy, dy)), _mm256_mul_ps(dz, dz));
+
+            __m256 cmp = _mm256_cmp_ps(dist, current_best_distance, _CMP_LT_OQ);
+            uint32_t mask = _mm256_movemask_ps(cmp);
+
+            if (mask == 0) {
+                continue;
+            }
+
+            _mm256_store_ps(distances_buffer, dist);
+            int subelement = 0;
+
+            while (mask != 0) {
+                if (mask & 0x1) {
+                    distances.replace_top(
+                        {distances_buffer[subelement], indices_ptr[i + subelement]});
+                    current_best_distance = _mm256_set1_ps(distances.top().first);
+                }
+
+                subelement += 1;
+                mask = mask >> 1;
+            }
+        }
+    }
+};
+
+inline __m256 compute_distance_squared_box_1d(__m256 x, __m256 qx, __m256 box) {
+    __m256 dx = _mm256_sub_ps(x, qx);
+    __m256 dx1 = _mm256_add_ps(dx, box);
+    __m256 dx2 = _mm256_sub_ps(dx, box);
+
+    dx = _mm256_mul_ps(dx, dx);
+    dx1 = _mm256_mul_ps(dx1, dx1);
+    dx2 = _mm256_mul_ps(dx2, dx2);
+
+    dx = _mm256_min_ps(dx, dx1);
+    dx = _mm256_min_ps(dx, dx2);
+    return dx;
+}
+
+template <typename QueueT> struct InsertShorterDistanceAVX<L2PeriodicDistance<float>, QueueT> {
+    typedef L2PeriodicDistance<float> distance_t;
+    typedef QueueT queue_t;
+    typedef std::pair<float, uint32_t> result_t;
+
+    void operator()(
+        OffsetRangeContainerWrapper<const PositionAndIndexArray<3>> const &positions,
+        std::array<float, 3> const &query, queue_t &distances,
+        distance_t const &distance_func) const {
+
+        size_t num_points = positions.size();
+
+        std::array<const float *, 3> positions_ptr;
+        for (size_t i = 0; i < 3; ++i) {
+            positions_ptr[i] = positions.container_.positions_[i] + positions.offset;
+        }
+
+        const uint32_t *indices_ptr = positions.container_.indices_.data() + positions.offset;
+
+        __m256 qx = _mm256_set1_ps(query[0]);
+        __m256 qy = _mm256_set1_ps(query[1]);
+        __m256 qz = _mm256_set1_ps(query[2]);
+
+        __m256 current_best_distance = _mm256_set1_ps(distances.top().first);
+        __m256 box_size = _mm256_set1_ps(distance_func.box_size_);
+
+        alignas(32) float distances_buffer[8];
+
+        for (size_t i = 0; i < num_points - 7; i += 8) {
+            __m256 x = _mm256_load_ps(positions_ptr[0] + i);
+            __m256 y = _mm256_load_ps(positions_ptr[1] + i);
+            __m256 z = _mm256_load_ps(positions_ptr[2] + i);
+
+            __m256 dx2 = compute_distance_squared_box_1d(x, qx, box_size);
+            __m256 dy2 = compute_distance_squared_box_1d(y, qy, box_size);
+            __m256 dz2 = compute_distance_squared_box_1d(z, qz, box_size);
+
+            __m256 dist = _mm256_add_ps(_mm256_add_ps(dx2, dy2), dz2);
 
             __m256 cmp = _mm256_cmp_ps(dist, current_best_distance, _CMP_LT_OQ);
             uint32_t mask = _mm256_movemask_ps(cmp);
