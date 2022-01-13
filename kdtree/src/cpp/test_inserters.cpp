@@ -62,7 +62,8 @@ template <template <typename, typename> typename Inserter> struct InserterL2Peri
 using InsertersL2Periodic = ::testing::Types<
     InserterL2PeriodicHolder<kdt::InsertShorterDistanceVanilla>,
     InserterL2PeriodicHolder<kdt::InsertShorterDistanceUnrolled4>,
-    InserterL2PeriodicHolder<kdt::InsertShorterDistanceAVX>>;
+    InserterL2PeriodicHolder<kdt::InsertShorterDistanceAVX>,
+    InserterL2PeriodicHolder<kdt::InsertShorterDistanceAsm>>;
 
 } // namespace
 

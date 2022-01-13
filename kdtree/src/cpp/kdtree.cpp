@@ -16,6 +16,7 @@
 
 #include "kdtree_impl.hpp"
 #include "kdtree_opt.hpp"
+#include "kdtree_opt_asm.hpp"
 #include "kdtree_utils.hpp"
 #include "tournament_tree.hpp"
 #include <span.hpp>
@@ -88,7 +89,7 @@ std::vector<std::pair<float, uint32_t>> KDTree::find_closest(
     typedef std::pair<float, uint32_t> result_t;
 
     detail::
-        KDTreeQuery<Distance, TournamentTree<result_t, PairLessFirst>, InsertShorterDistanceVanilla>
+        KDTreeQuery<Distance, TournamentTree<result_t, PairLessFirst>, InsertShorterDistanceAsm>
             query(*this, distance, position, k);
     query.compute(&nodes_[0]);
 

@@ -10,14 +10,11 @@
 
 #include "kdtree.hpp"
 #include "kdtree_opt.hpp"
+#include "kdtree_opt_asm.hpp"
 #include "kdtree_utils.hpp"
 #include "tournament_tree.hpp"
 
 namespace kdt = wenda::kdtree;
-
-extern "C" {
-uint32_t wenda_find_closest_l2_avx2(void *positions, size_t n, float *const query);
-}
 
 namespace {
 
@@ -65,6 +62,7 @@ template <typename Inserter, typename ContainerT> struct Contiguous {
     float operator()(uint32_t index, std::array<float, 3> const &query) {
         typename Inserter::queue_t queue(32, {std::numeric_limits<float>::max(), -1});
         auto offset = (index * query_size_) % (positions_.size() - query_size_);
+        offset = (offset / 16) * 16;
 
         inserter_(
             kdt::OffsetRangeContainerWrapper{positions_, offset, query_size_},
@@ -107,6 +105,7 @@ template <typename Inserter, typename ContainerT> struct RandomBlock {
 
         auto r = rng_(c, uk_);
         auto offset = r[0] % (positions_.size() - query_size_);
+        offset = (offset / 16) * 16;
 
         inserter_(
             kdt::OffsetRangeContainerWrapper{positions_, offset, query_size_},
@@ -136,7 +135,8 @@ void Insertion(benchmark::State &state) {
     // force 32-element alignment
     num_points = (num_points / 32) * 32;
 
-    auto positions = kdt::PositionAndIndexArray(kdt::make_random_position_and_index(num_points, 42));
+    auto positions =
+        kdt::PositionAndIndexArray(kdt::make_random_position_and_index(num_points, 42));
     std::array<float, 3> query = {0.4, 0.5, 0.6};
 
     typedef InserterL2<InserterT, QueueT> Inserter;
@@ -171,7 +171,8 @@ void InsertionPeriodic(benchmark::State &state) {
     // force 32-element alignment
     num_points = (num_points / 32) * 32;
 
-    auto positions = kdt::PositionAndIndexArray(kdt::make_random_position_and_index(num_points, 42));
+    auto positions =
+        kdt::PositionAndIndexArray(kdt::make_random_position_and_index(num_points, 42));
     std::array<float, 3> query = {0.4, 0.5, 0.6};
 
     typedef InserterL2Periodic<InserterT, QueueT> Inserter;
@@ -248,30 +249,6 @@ void ReduceDistance(benchmark::State &state) {
     state.SetBytesProcessed(state.iterations() * query_size * sizeof(kdt::PositionAndIndex));
 }
 
-void ComputeClosestAVX2(benchmark::State &state) {
-    size_t num_points = state.range(0);
-    size_t query_size = state.range(1);
-
-    auto positions = kdt::make_random_position_and_index(num_points, 42);
-    auto positions_span = tcb::make_span(positions);
-
-    std::array<float, 3> query = {0.5, 0.5, 0.5};
-    kdt::L2Distance distance;
-
-    size_t idx = 0;
-
-    auto positions_ptr = positions.data();
-
-    for (auto _ : state) {
-        assert(idx * query_size + query_size <= positions.size());
-        auto result =
-            wenda_find_closest_l2_avx2(positions_ptr + idx * query_size, query_size, query.data());
-        benchmark::DoNotOptimize(result);
-        idx = (idx + 1) % (num_points / query_size);
-    }
-
-    state.SetBytesProcessed(state.iterations() * query_size * sizeof(kdt::PositionAndIndex));
-}
 
 } // namespace
 
@@ -281,6 +258,8 @@ void ComputeClosestAVX2(benchmark::State &state) {
     BENCHMARK_TEMPLATE(Procedure, kdt::InsertShorterDistanceUnrolled4, Queue, Loop)                \
         ->Args({1000000, 1024});                                                                   \
     BENCHMARK_TEMPLATE(Procedure, kdt::InsertShorterDistanceAVX, Queue, Loop)                      \
+        ->Args({1000000, 1024});                                                                   \
+    BENCHMARK_TEMPLATE(Procedure, kdt::InsertShorterDistanceAsm, Queue, Loop)                      \
         ->Args({1000000, 1024});
 
 DEFINE_BENCHMARKS_ALL_INSERTERS(Insertion, kdt::TournamentTree, RandomBlock)
@@ -294,5 +273,4 @@ DEFINE_BENCHMARKS_ALL_INSERTERS(InsertionPeriodic, kdt::TournamentTree, Cached)
 #undef DEFINE_BENCHMARKS_ALL_INSERTERS
 
 BENCHMARK(ReduceDistance)->Args({1000000, 1024});
-BENCHMARK(ComputeClosestAVX2)->Args({1000000, 1024});
 BENCHMARK(Memcpy)->Args({1000000, 1024});
