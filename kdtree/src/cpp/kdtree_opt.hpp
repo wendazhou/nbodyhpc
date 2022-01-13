@@ -154,7 +154,7 @@ template <typename QueueT> struct InsertShorterDistanceAVX<L2Distance, QueueT> {
             int subelement = 0;
 
             while (mask != 0) {
-                if (mask & 0x1) {
+                if ((mask & 0x1) && (distances_buffer[subelement] < distances.top().first)) {
                     distances.replace_top(
                         {distances_buffer[subelement], indices_ptr[i + subelement]});
                     current_best_distance = _mm256_set1_ps(distances.top().first);

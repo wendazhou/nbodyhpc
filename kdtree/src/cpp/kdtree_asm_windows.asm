@@ -497,8 +497,8 @@ loop_start:
     vmovaps ymm4, YMMWORD PTR [r14]
 
     vsubps ymm2, ymm2, ymm5
-    vsubps ymm3, ymm3, ymm5
-    vsubps ymm4, ymm4, ymm5
+    vsubps ymm3, ymm3, ymm6
+    vsubps ymm4, ymm4, ymm7
 
     vmulps ymm2, ymm2, ymm2
     vmulps ymm3, ymm3, ymm3

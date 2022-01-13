@@ -185,7 +185,7 @@ void insert_l2_test(
         auto tree = PairTournamentTree(num_closest);
         auto tree2 = PairTournamentTree(num_closest);
 
-        std::array<float, 3> query = {0.5f, 0.5f, 0.5f};
+        std::array<float, 3> query = {0.4f, 0.5f, 0.6f};
 
         fn(positions, query, tree, distance);
 

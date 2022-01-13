@@ -110,36 +110,38 @@ TYPED_TEST_P(KDTreeRandomTestInserterL2, ExhaustiveLeaves) {
     typedef std::remove_pointer_t<decltype(this->dummy_result_ptr_)> result_t;
     typedef std::remove_pointer_t<decltype(this->dummy_inserter_ptr_)> inserter_t;
 
-    uint32_t num_points = 1;
-
-    auto positions = wenda::kdtree::make_random_position_and_index(256, 42);
+    auto positions = wenda::kdtree::make_random_position_and_index(64, 42);
     std::array<float, 3> query_pos = {0.4, 0.5, 0.6};
 
-    auto tree = wenda::kdtree::KDTree(std::vector(positions), {.leaf_size = 64});
+    auto tree = wenda::kdtree::KDTree(std::vector(positions), {.leaf_size = 16});
 
-    for (auto const &node : tree.nodes()) {
-        if (node.dimension_ != -1) {
-            continue;
+    for (int num_points : {1, 4, 7}) {
+        for (auto const &node : tree.nodes()) {
+            if (node.dimension_ != -1) {
+                continue;
+            }
+
+            kdt::TournamentTree<result_t, kdt::PairLessFirst> tournament_tree(
+                num_points, {std::numeric_limits<float>::max(), -1});
+            auto span = wenda::kdtree::OffsetRangeContainerWrapper(
+                tree.positions(), node.left_, node.right_ - node.left_);
+
+            inserter_t inserter;
+            inserter(span, query_pos, tournament_tree, {});
+
+            std::vector<result_t> result(num_points);
+            tournament_tree.copy_values(result.data());
+            std::sort(result.begin(), result.end());
+            for (auto &p : result) {
+                p.first = this->distance_.postprocess(p.first);
+            }
+
+            auto result_naive = find_nearest_naive(span, query_pos, num_points, this->distance_);
+
+            EXPECT_EQ(result, result_naive)
+                << "Error with num_points: " << num_points << "at node: (" << node.left_ << ", "
+                << node.right_ << ")";
         }
-
-        kdt::TournamentTree<result_t, kdt::PairLessFirst> tournament_tree(
-            num_points, {std::numeric_limits<float>::max(), -1});
-        auto span = wenda::kdtree::OffsetRangeContainerWrapper(
-            tree.positions(), node.left_, node.right_ - node.left_);
-
-        inserter_t inserter;
-        inserter(span, query_pos, tournament_tree, {});
-
-        std::vector<result_t> result(num_points);
-        tournament_tree.copy_values(result.data());
-        std::sort(result.begin(), result.end());
-        for (auto &p : result) {
-            p.first = this->distance_.postprocess(p.first);
-        }
-
-        auto result_naive = find_nearest_naive(span, query_pos, num_points, this->distance_);
-
-        ASSERT_EQ(result, result_naive);
     }
 }
 
