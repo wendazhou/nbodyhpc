@@ -5,6 +5,7 @@
 
 #include "kdtree.hpp"
 #include "kdtree_opt.hpp"
+#include "floyd_rivest.hpp"
 #include "tournament_tree.hpp"
 
 namespace wenda {
@@ -59,7 +60,7 @@ template <typename Synchronization = MutexLockSynchronization> struct KDTreeBuil
         median_index = (median_index / block_size_) * block_size_;
         auto median_it = positions.begin() + median_index;
 
-        std::nth_element(
+        floyd_rivest_select(
             positions.begin(),
             median_it,
             positions.end(),
