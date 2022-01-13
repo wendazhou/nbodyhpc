@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cstdint>
+#include <numeric>
 #include <vector>
 
 #include <Random123/philox.h>
@@ -12,7 +13,8 @@
 namespace wenda {
 namespace kdtree {
 
-inline std::vector<PositionAndIndex> make_random_position_and_index(uint32_t n, unsigned int seed, float boxsize=1.0) {
+inline std::vector<PositionAndIndex>
+make_random_position_and_index(uint32_t n, unsigned int seed, float boxsize = 1.0) {
     std::vector<PositionAndIndex> positions(n);
 
     typedef r123::Philox4x32 RNG;
@@ -35,6 +37,34 @@ inline std::vector<PositionAndIndex> make_random_position_and_index(uint32_t n, 
     return positions;
 }
 
+template <size_t R = 3, typename T = float, typename IndexT = uint32_t>
+inline PositionAndIndexArray<R, T, IndexT>
+make_random_position_and_index_array(uint32_t n, unsigned int seed, float boxsize = 1.0) {
+    PositionAndIndexArray<R, T, IndexT> result(n);
+
+    typedef r123::Philox4x32 RNG;
+    RNG rng;
+
+    RNG::ctr_type c = {{}};
+    RNG::ukey_type uk = {{}};
+    uk[0] = seed;
+
+    for (size_t dim = 0; dim < R; ++dim) {
+        c.v[0] = dim;
+
+        for (uint32_t i = 0; i < n; ++i) {
+            c.v[1] = i;
+            auto r = rng(c, uk);
+
+            result.positions_[dim][i] = r123::u01<T>(r[0]) * boxsize;
+        }
+    }
+
+    std::iota(result.indices_.begin(), result.indices_.end(), 0);
+
+    return result;
+}
+
 /** Utility function to access underlying container of a STL container adapter.
  * This function is used to get around the access protections of the STL container adapters,
  * and expose the protected member c.
@@ -54,11 +84,12 @@ typename ContainerAdapter::container_type &get_container_from_adapter(ContainerA
 }
 
 /** Utility function to make an array of position and indices from the given positions.
- * 
+ *
  * @param positions The positions to convert.
- * 
+ *
  */
-std::vector<PositionAndIndex> make_position_and_indices(tcb::span<const std::array<float, 3>> const &positions);
+std::vector<PositionAndIndex>
+make_position_and_indices(tcb::span<const std::array<float, 3>> const &positions);
 
 } // namespace kdtree
 } // namespace wenda
