@@ -183,6 +183,117 @@ struct PositionAndIndexArray {
     struct PositionAndIndexProxy {
         std::array<std::reference_wrapper<float>, R> position;
         uint32_t &index;
+
+        operator PositionAndIndex() const {
+            return {std::array<float, 3>{position[0], position[1], position[2]}, index};
+        }
+    };
+
+    template <typename ArrayBase, typename Derived> struct PositionAndIndexIteratorBase {
+        typedef PositionAndIndex value;
+        typedef std::random_access_iterator_tag iterator_category;
+        typedef std::ptrdiff_t difference_type;
+
+        ptrdiff_t offset_;
+        ArrayBase array_;
+
+        PositionAndIndexIteratorBase() = default;
+        PositionAndIndexIteratorBase(ArrayBase array, ptrdiff_t offset)
+            : offset_(offset), array_(array) {}
+        PositionAndIndexIteratorBase(PositionAndIndexIteratorBase const &) = default;
+
+        Derived &operator++() {
+            ++offset_;
+            return *static_cast<Derived *>(this);
+        }
+
+        Derived operator++(int) {
+            Derived result = *static_cast<Derived *>(this);
+            ++offset_;
+            return result;
+        }
+
+        Derived &operator--() {
+            --offset_;
+            return *static_cast<Derived *>(this);
+        }
+
+        Derived operator--(int) {
+            Derived result = *static_cast<Derived *>(this);
+            --offset_;
+            return result;
+        }
+
+        Derived &operator+=(ptrdiff_t n) {
+            offset_ += n;
+            return *static_cast<Derived *>(this);
+        }
+
+        Derived &operator-=(ptrdiff_t n) {
+            offset_ -= n;
+            return *static_cast<Derived *>(this);
+        }
+
+        Derived operator+(ptrdiff_t n) const { return Derived(array_, offset_ + n); }
+
+        Derived operator-(ptrdiff_t n) const { return Derived(array_, offset_ - n); }
+
+        ptrdiff_t operator-(Derived const &other) const { return offset_ - other.offset_; }
+
+        bool operator==(Derived const &other) const { return offset_ == other.offset_; }
+
+        bool operator!=(Derived const &other) const { return offset_ != other.offset_; }
+
+        bool operator<(Derived const &other) const { return offset_ < other.offset_; }
+
+        bool operator<=(Derived const &other) const { return offset_ <= other.offset_; }
+
+        bool operator>(Derived const &other) const { return offset_ > other.offset_; }
+
+        bool operator>=(Derived const &other) const { return offset_ >= other.offset_; }
+
+        Derived &operator=(Derived const &other) {
+            offset_ = other.offset_;
+            return *static_cast<Derived *>(this);
+        }
+    };
+
+    struct PositionAndIndexIterator
+        : PositionAndIndexIteratorBase<PositionAndIndexArray *, PositionAndIndexIterator> {
+        typedef PositionAndIndexIteratorBase<PositionAndIndexArray *, PositionAndIndexIterator>
+            iterator_base;
+        typedef iterator_base::value value;
+        typedef iterator_base::difference_type difference_type;
+        typedef iterator_base::iterator_category iterator_category;
+        typedef PositionAndIndexProxy reference;
+        typedef PositionAndIndexProxy *pointer;
+
+        PositionAndIndexIterator() = default;
+        PositionAndIndexIterator(PositionAndIndexArray *array, size_t offset)
+            : iterator_base(array, offset) {}
+        PositionAndIndexIterator(PositionAndIndexIterator const &) = default;
+
+        reference operator*() const { return (*this->array_)[this->offset_]; }
+    };
+
+    struct ConstPositionAndIndexIterator
+        : PositionAndIndexIteratorBase<
+              PositionAndIndexArray const *, ConstPositionAndIndexIterator> {
+        typedef PositionAndIndexIteratorBase<
+            PositionAndIndexArray const *, ConstPositionAndIndexIterator>
+            iterator_base;
+        typedef iterator_base::value value;
+        typedef iterator_base::difference_type difference_type;
+        typedef iterator_base::iterator_category iterator_category;
+        typedef PositionAndIndexProxy reference;
+        typedef PositionAndIndexProxy *pointer;
+
+        ConstPositionAndIndexIterator() = default;
+        ConstPositionAndIndexIterator(PositionAndIndexArray const *array, size_t offset)
+            : iterator_base(array, offset) {}
+        ConstPositionAndIndexIterator(ConstPositionAndIndexIterator const &) = default;
+
+        value operator*() const { return (*this->array_)[this->offset_]; }
     };
 
     std::array<T *, R> positions_;
@@ -196,7 +307,7 @@ struct PositionAndIndexArray {
     }
 
     PositionAndIndexArray &operator=(PositionAndIndexArray const &) = delete;
-    PositionAndIndexArray &operator=(PositionAndIndexArray && other) {
+    PositionAndIndexArray &operator=(PositionAndIndexArray &&other) {
         std::swap(positions_, other.positions_);
         std::swap(indices_, other.indices_);
 
@@ -240,6 +351,14 @@ struct PositionAndIndexArray {
     PositionAndIndex operator[](size_t i) const {
         return PositionAndIndex{
             {positions_[0][i], positions_[1][i], positions_[2][i]}, indices_[i]};
+    }
+
+    PositionAndIndexIterator begin() { return PositionAndIndexIterator(this, 0); }
+    PositionAndIndexIterator end() { return PositionAndIndexIterator(this, size()); }
+
+    ConstPositionAndIndexIterator begin() const { return ConstPositionAndIndexIterator(this, 0); }
+    ConstPositionAndIndexIterator end() const {
+        return ConstPositionAndIndexIterator(this, size());
     }
 };
 

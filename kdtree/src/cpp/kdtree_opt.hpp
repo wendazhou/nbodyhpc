@@ -10,8 +10,6 @@
 namespace wenda {
 namespace kdtree {
 
-namespace {
-
 struct PairLessFirst {
     bool operator()(
         std::pair<float, uint32_t> const &left, std::pair<float, uint32_t> const &right) const {
@@ -104,8 +102,7 @@ using InsertShorterDistanceUnrolled4 = InsertShorterDistanceUnrolled<DistanceT, 
 template <typename DistanceT, typename QueueT>
 using InsertShorterDistanceUnrolled8 = InsertShorterDistanceUnrolled<DistanceT, QueueT, 8>;
 
-template <typename DistanceT, typename QueueT>
-struct InsertShorterDistanceAVX;
+template <typename DistanceT, typename QueueT> struct InsertShorterDistanceAVX;
 
 template <typename QueueT> struct InsertShorterDistanceAVX<L2Distance, QueueT> {
     typedef L2Distance distance_t;
@@ -170,6 +167,8 @@ template <typename QueueT> struct InsertShorterDistanceAVX<L2Distance, QueueT> {
     }
 };
 
+namespace detail {
+
 inline __m256 compute_distance_squared_box_1d(__m256 x, __m256 qx, __m256 box) {
     __m256 dx = _mm256_sub_ps(x, qx);
     __m256 dx1 = _mm256_add_ps(dx, box);
@@ -183,6 +182,7 @@ inline __m256 compute_distance_squared_box_1d(__m256 x, __m256 qx, __m256 box) {
     dx = _mm256_min_ps(dx, dx2);
     return dx;
 }
+} // namespace detail
 
 template <typename QueueT> struct InsertShorterDistanceAVX<L2PeriodicDistance<float>, QueueT> {
     typedef L2PeriodicDistance<float> distance_t;
@@ -217,9 +217,9 @@ template <typename QueueT> struct InsertShorterDistanceAVX<L2PeriodicDistance<fl
             __m256 y = _mm256_load_ps(positions_ptr[1] + i);
             __m256 z = _mm256_load_ps(positions_ptr[2] + i);
 
-            __m256 dx2 = compute_distance_squared_box_1d(x, qx, box_size);
-            __m256 dy2 = compute_distance_squared_box_1d(y, qy, box_size);
-            __m256 dz2 = compute_distance_squared_box_1d(z, qz, box_size);
+            __m256 dx2 = detail::compute_distance_squared_box_1d(x, qx, box_size);
+            __m256 dy2 = detail::compute_distance_squared_box_1d(y, qy, box_size);
+            __m256 dz2 = detail::compute_distance_squared_box_1d(z, qz, box_size);
 
             __m256 dist = _mm256_add_ps(_mm256_add_ps(dx2, dy2), dz2);
 
@@ -246,8 +246,6 @@ template <typename QueueT> struct InsertShorterDistanceAVX<L2PeriodicDistance<fl
         }
     }
 };
-
-} // namespace
 
 } // namespace kdtree
 } // namespace wenda

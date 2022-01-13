@@ -527,7 +527,7 @@ scalar_insert_start:
     mov esi, DWORD PTR[r15 + 4 * rcx]
     tournament_tree_swap_top_m r9, edi, xmm0, esi, r11
     tournament_tree_update_root_branchless_m r9, rdi, rsi, r10, r11, xmm4
-    vbroadcastss ymm8, DWORD PTR[r9]
+    vbroadcastss ymm8, xmm0
 scalar_insert_end:
     inc ecx
     shr ebx, 1
