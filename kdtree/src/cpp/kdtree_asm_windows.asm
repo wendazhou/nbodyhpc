@@ -20,66 +20,6 @@ restore_xmm_registers MACRO rfp: REQ, offset: REQ, regs :VARARG
 ENDM
 
 
-insert_closest_m MACRO load_query, compute_distance, compute_distance_single
-    LOCAL loop_start, scalar_insert_start, scalar_insert_end, loop_end, tail_loop, tail_loop_start, tail_end
-
-    load_query r8
-
-    ; Load current best distance from tree
-    vbroadcastss current_max_reg, DWORD PTR [r9]
-
-    ; Load end pointer into rdx
-    lea rdx, [rdx * 8]
-    lea rdx, [rcx + rdx * 2 - 7 * 16]
-
-    cmp rcx, rdx
-    jae tail_loop
-
-loop_start:
-    compute_distance
-    compare_distances ebx, current_max_reg, loop_end
-scalar_insert_start:
-    scalar_insert_test ebx, current_max_reg_xmm, scalar_insert_end
-
-    ; update tournament tree with new best
-    mov esi, [indices_buffer + r10]
-    tournament_tree_swap_top_m r9, edi, xmm0, esi, r11
-    tournament_tree_update_root_branchless_m r9, rdi, rsi, r11, r12, xmm3
-
-    ; reload top value, xmm0 is updated by the tournament tree macros
-    vbroadcastss current_max_reg, xmm0
-scalar_insert_end:
-    scalar_insert_loop ebx, scalar_insert_start
-loop_end:
-    lea rcx, [rcx + 128]
-    cmp rcx, rdx
-    jb loop_start
-
-
-tail_loop:
-; Adjust end pointer to non-truncated value
-    add rdx, 7 * 16
-; Test for any iterations in tail loop
-    cmp rcx, rdx
-    je done
-; Tail loop (remainder)
-    prepare_tail_loop current_max_reg_xmm
-tail_loop_start:
-    compute_distance_single xmm2
-    ucomiss xmm0, current_max_reg_xmm
-    jae tail_end
-
-    mov esi, DWORD PTR[rcx + 12]
-    tournament_tree_swap_top_m r9, edi, xmm0, esi, r11
-    tournament_tree_update_root_branchless_m r9, rdi, rsi, r11, r12, xmm3
-
-    vmovaps current_max_reg_xmm, xmm0
-tail_end:
-    add rcx, 16
-    cmp rcx, rdx
-    jb tail_loop_start
-ENDM
-
 save_all_prolog MACRO
     pad_size = 8
     stack_size = locals_size + pad_size + 10 * 16
