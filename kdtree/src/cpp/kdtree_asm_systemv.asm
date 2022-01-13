@@ -86,32 +86,49 @@ tournament_tree_replace_top:
     vaddps ymm2, ymm2, ymm4
 %endmacro
 
-global wenda_insert_closest_l2_avx2
-wenda_insert_closest_l2_avx2:
-    %assign distances_buffer_offset 0
-    %assign stack_size 32
+%macro compute_l2_periodic_squares_impl 1-*
+    ; Computes the 1-d L2 distance with periodic boundary conditions for each of the registers
+    ; This function expects each of the input registers to contain the difference value.
+    ; This function expects ymm10 to hold the box size
+    ; This function uses ymm1, ymm12 as scratch registers
+
+    %rep %0
+
+    vsubps ymm11, %1, ymm10
+    vaddps ymm12, %1, ymm10
+    vmulps %1, %1, %1
+    vmulps ymm11, ymm11, ymm11
+    vmulps ymm12, ymm12, ymm12
+    vminps %1, %1, ymm11
+    vminps %1, %1, ymm12
+
+    %rotate 1
+
+    %endrep
+%endmacro
+
+%macro compute_distance_l2_periodic 0
+    vsubps ymm2, ymm2, ymm5
+    vsubps ymm3, ymm3, ymm6
+    vsubps ymm4, ymm4, ymm7
+
+    compute_l2_periodic_squares_impl ymm2, ymm3, ymm4
+
+    vaddps ymm2, ymm2, ymm3
+    vaddps ymm2, ymm2, ymm4
+%endmacro
+
+%macro insert_closest_l2_avx2 2
+    %define compute_distance %1
+    %define done_label %2
 
     %define reg_query rdx
     %define reg_tree rcx
     %define reg_indices r8
-
     %define distances_buffer rsp
 
-    push rbx
-    push r12
-    push r13
-    push r14
-    push r15
-    push rbp
-    mov rbp, rsp
-
-    ; allocate stack and align to 32-byte boundary
-    sub rsp, stack_size
-    and rsp, -32
-
-    ; Load query vector
     test rsi, rsi
-    je .done
+    je done_label
 
     ; Load current best distance
     vbroadcastss ymm8, DWORD [reg_tree]
@@ -128,47 +145,66 @@ wenda_insert_closest_l2_avx2:
 
     ; Compute end pointer
     lea rsi, [r12 + rsi * 4]
-.loop_start:
+%%loop_start:
     vmovaps ymm2, YWORD [r12]
     vmovaps ymm3, YWORD [r13]
     vmovaps ymm4, YWORD [r14]
 
-    compute_distance_l2
+    compute_distance
 
     vcmpltps ymm3, ymm2, ymm8
     vmovmskps ebx, ymm3
 
     test bl, bl
-    je .loop_test
+    je %%loop_test
 
     vmovaps [distances_buffer], ymm2
     xor rdi, rdi
-.scalar_insert_start:
+%%scalar_insert_start:
     test bl, 1
-    je .scalar_insert_end
+    je %%scalar_insert_end
 
     vmovss xmm0, DWORD [distances_buffer + 4 * rdi]
     ucomiss xmm0, xmm8
-    jae .scalar_insert_end
+    jae %%scalar_insert_end
 
     ; Perform scalar insert
     mov r15d, DWORD [reg_indices + 4 * rdi]
     tournament_tree_swap_top_m reg_tree, r9d, xmm0, r15d, r11
     tournament_tree_update_root_m reg_tree, r9, r15, r10, r11
     vbroadcastss ymm8, xmm0
-.scalar_insert_end:
+%%scalar_insert_end:
     inc rdi
     shr ebx, 1
     test bl, bl
-    jne .scalar_insert_start
-.loop_test:
+    jne %%scalar_insert_start
+%%loop_test:
     ; Reload array pointers
     add r12, 4 * 8
     add r13, 4 * 8
     add r14, 4 * 8
     add reg_indices, 4 * 8
     cmp r12, rsi
-    jb .loop_start
+    jb %%loop_start
+%endmacro
+
+global wenda_insert_closest_l2_avx2
+wenda_insert_closest_l2_avx2:
+    %assign stack_size 32
+
+    push rbx
+    push r12
+    push r13
+    push r14
+    push r15
+    push rbp
+    mov rbp, rsp
+
+    ; allocate stack and align to 32-byte boundary
+    sub rsp, stack_size
+    and rsp, -32
+
+    insert_closest_l2_avx2 compute_distance_l2, .done
 .done:
     vzeroupper
     leave
@@ -182,7 +218,34 @@ wenda_insert_closest_l2_avx2:
 
 global wenda_insert_closest_l2_periodic_avx2
 wenda_insert_closest_l2_periodic_avx2:
-    jmp wenda_insert_closest_l2_avx2
+    %assign stack_size 32
+
+    push rbx
+    push r12
+    push r13
+    push r14
+    push r15
+    push rbp
+    mov rbp, rsp
+
+    ; allocate stack and align to 32-byte boundary
+    sub rsp, stack_size
+    and rsp, -32
+
+    ; Broadcasts the box size from its original register to ymm10
+    vbroadcastss ymm10, xmm0
+
+    insert_closest_l2_avx2 compute_distance_l2_periodic, .done
+.done:
+    vzeroupper
+    leave
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    pop rbx
+
+    ret
 
 align 16
 query_mask:
