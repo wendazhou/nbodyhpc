@@ -441,45 +441,112 @@ tail_end:
     jb tail_loop_start
 ENDM
 
-; Main procedure for finding k closest points to query vector,
+; Main procedure for inserting closest points into given tournament tree.
 ;
 ; Arguments:
 ;   - rcx: address of array of points, index pairs
 ;   - rdx: number of points in array
 ;   - r8: address of query vector
 ;   - r9: address of the tournament tree
-; Returns:
-;   - rax: Index of the closest point
+;   - (on stack): address of indices
 wenda_insert_closest_l2_avx2 PROC PUBLIC FRAME
-    stack_size = 64 + 10 * 16 + 16
+    locals_size = 32 + 16
+    pad_size = 8
+    stack_size = locals_size + pad_size + 10 * 16
 
-    FOR reg, <rbp,rbx,rdi,rsi,r12,r13,r14>
+    FOR reg, <rbp,rbx,rdi,rsi,r12,r13,r14,r15>
         push reg
         .pushreg reg
     ENDM
     sub rsp, stack_size ; reserve space for local variables and non-volatile registers
 .allocstack stack_size
 .setframe rsp, 0
-    save_xmm_registers rsp, 64 + 16, xmm6, xmm7, xmm8, xmm9, xmm10, xmm11, xmm12, xmm13, xmm14, xmm15
+    save_xmm_registers rsp, locals_size, xmm6, xmm7, xmm8, xmm9, xmm10, xmm11, xmm12, xmm13, xmm14, xmm15
 .endprolog
+    stack_arguments EQU rsp + stack_size + 8 * 8 + 8
+    distances_buffer EQU rbp
+
+    test rdx, rdx
+    je done
 
     ; Align rbp to 32-byte boundary
     lea rbp, [rsp + 16]
     and rbp, -32
 
-    periodic = 0
+    ; Load current best distance
+    vbroadcastss ymm8, DWORD PTR[r9]
 
-    indices_buffer EQU rbp
-    distances_buffer EQU rbp + 32
+    ; Load query vector
+    vbroadcastss ymm5, DWORD PTR[r8]
+    vbroadcastss ymm6, DWORD PTR[r8 + 4]
+    vbroadcastss ymm7, DWORD PTR[r8 + 8]
 
-    insert_closest_m load_query_vector_transpose, compute_l2_transpose, compute_l2_single
+    ; Load start pointers
+    mov r12, [rcx]
+    mov r13, [rcx + 8]
+    mov r14, [rcx + 16]
 
+    ; Load indices pointer into r15
+    mov r15, [stack_arguments + 4 * 8]
+
+    ; Compute end pointer
+    lea rdx, [r12 + rdx * 4]
+loop_start:
+    vmovaps ymm2, YMMWORD PTR [r12]
+    vmovaps ymm3, YMMWORD PTR [r13]
+    vmovaps ymm4, YMMWORD PTR [r14]
+
+    vsubps ymm2, ymm2, ymm5
+    vsubps ymm3, ymm3, ymm5
+    vsubps ymm4, ymm4, ymm5
+
+    vmulps ymm2, ymm2, ymm2
+    vmulps ymm3, ymm3, ymm3
+    vmulps ymm4, ymm4, ymm4
+
+    vaddps ymm2, ymm2, ymm3
+    vaddps ymm2, ymm2, ymm4
+
+    vcmpltps ymm3, ymm2, ymm8
+    vmovmskps ebx, ymm3
+
+    test bl, bl
+    je loop_test
+
+    vmovaps [distances_buffer], ymm2
+    xor ecx, ecx
+scalar_insert_start:
+    test bl, 1
+    je scalar_insert_end
+
+    vmovss xmm0, DWORD PTR[distances_buffer + 4 * rcx]
+    ucomiss xmm0, xmm8
+    jae scalar_insert_end
+
+    ; Perform scalar insert
+    mov esi, DWORD PTR[r15 + 4 * rcx]
+    tournament_tree_swap_top_m r9, edi, xmm0, esi, r11
+    tournament_tree_update_root_branchless_m r9, rdi, rsi, r10, r11, xmm4
+    vbroadcastss ymm8, DWORD PTR[r9]
+scalar_insert_end:
+    inc ecx
+    shr ebx, 1
+    test bl, bl
+    jne scalar_insert_start
+loop_test:
+    ; Reload array pointers
+    add r12, 4 * 8
+    add r13, 4 * 8
+    add r14, 4 * 8
+    add r15, 4 * 8
+    cmp r12, rdx
+    jb loop_start
 done:
 ; epilog
-    restore_xmm_registers rsp, 64 + 16, xmm6, xmm7, xmm8, xmm9, xmm10, xmm11, xmm12, xmm13, xmm14, xmm15
+    restore_xmm_registers rsp, locals_size, xmm6, xmm7, xmm8, xmm9, xmm10, xmm11, xmm12, xmm13, xmm14, xmm15
     vzeroupper
     add rsp, stack_size
-    FOR reg, <r14,r13,r12,rsi,rdi,rbx,rbp>
+    FOR reg, <r15,r14,r13,r12,rsi,rdi,rbx,rbp>
         pop reg
     ENDM
     ret

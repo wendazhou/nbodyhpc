@@ -13,11 +13,13 @@ void tournament_tree_update_root(
 
 void tournament_tree_replace_top(void *tree, float element_value, uint32_t element_idx);
 uint32_t wenda_find_closest_l2_avx2(void const *positions, size_t n, float const *query);
-void wenda_insert_closest_l2_avx2(void const *positions, size_t n, float const *query, void *tree);
 uint32_t wenda_find_closest_l2_periodic_avx2(
     void const *positions, size_t n, float const *query, float box_size);
 void wenda_insert_closest_l2_periodic_avx2(
     void const *positions, size_t n, float const *query, void *tree, float boxsize);
+
+void wenda_insert_closest_l2_avx2(
+    float const * const*positions, size_t n, float const *query, void *tree, uint32_t const* indices);
 }
 
 namespace {
@@ -166,6 +168,9 @@ INSTANTIATE_TEST_SUITE_P(
     FindClosestAsm, FindClosestAsmTest,
     ::testing::Values(1, 2, 3, 5, 7, 8, 15, 16, 113, 127, 128, 230));
 
+//! Parametrized test fixture for inserters
+//! The first parameter represents the number of neighbors to obtain,
+//! The second parameter represents the number of points to generate.
 class InserterAsmTest : public ::testing::TestWithParam<std::tuple<int, int>> {
   public:
     std::vector<uint32_t> seeds_ = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
@@ -231,8 +236,13 @@ TEST_P(InserterAsmTest, InsertL2) {
         distance,
         seeds_,
         [](auto const &positions, auto const &query, auto &tree, auto const &distance) {
+            auto positions_array = wenda::kdtree::PositionAndIndexArray(positions);
             wenda_insert_closest_l2_avx2(
-                positions.data(), positions.size(), query.data(), tree.data().data());
+                positions_array.positions_.data(),
+                positions_array.size(),
+                query.data(),
+                tree.data().data(),
+                positions_array.indices_.data());
         });
 }
 
@@ -262,4 +272,4 @@ INSTANTIATE_TEST_SUITE_P(
     InserterAsm, InserterAsmTest,
     ::testing::Combine(
         ::testing::Values(1, 3, 7, 8, 16, 20),
-        ::testing::Values(1, 3, 6, 7, 8, 15, 16, 23, 128, 341)));
+        ::testing::Values(8, 16, 32, 256)));
