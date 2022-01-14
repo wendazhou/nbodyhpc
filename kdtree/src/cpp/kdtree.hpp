@@ -14,19 +14,20 @@ namespace wenda {
 namespace kdtree {
 
 #ifdef _MSC_VER
-inline void *aligned_alloc(size_t alignment, size_t size) {
+inline void *aligned_alloc(size_t alignment, size_t size) noexcept {
     return _aligned_malloc(size, alignment);
 }
 
-inline void aligned_free(void *ptr) { _aligned_free(ptr); }
+inline void aligned_free(void *ptr) noexcept { _aligned_free(ptr); }
 #else
-inline void *aligned_alloc(size_t alignment, size_t size) {
+inline void *aligned_alloc(size_t alignment, size_t size) noexcept {
     // round up size to next multiple of alignment
     size = (size + alignment - 1) & ~(alignment - 1);
-    return std::aligned_alloc(alignment, size);
+    // For some reason std::aligned_alloc not exposed in libstdc++ on MacOS
+    return ::aligned_alloc(alignment, size);
 }
 
-inline void aligned_free(void *ptr) { return free(ptr); }
+inline void aligned_free(void *ptr) noexcept { return free(ptr); }
 #endif
 
 //! This structure encapsulates information to compute the l2 distance between two points.
@@ -276,13 +277,13 @@ struct PositionAndIndexArray {
 
     PositionAndIndexArray() = default;
     PositionAndIndexArray(PositionAndIndexArray const &) = delete;
-    PositionAndIndexArray(PositionAndIndexArray &&other)
+    PositionAndIndexArray(PositionAndIndexArray &&other) noexcept
         : positions_(std::move(other.positions_)), indices_(std::move(other.indices_)) {
         std::fill(other.positions_.begin(), other.positions_.end(), nullptr);
     }
 
     PositionAndIndexArray &operator=(PositionAndIndexArray const &) = delete;
-    PositionAndIndexArray &operator=(PositionAndIndexArray &&other) {
+    PositionAndIndexArray &operator=(PositionAndIndexArray &&other) noexcept {
         std::swap(positions_, other.positions_);
         std::swap(indices_, other.indices_);
 
@@ -297,7 +298,7 @@ struct PositionAndIndexArray {
 
     template <
         typename Container,
-        std::enable_if<std::negation<std::is_integral<Container>>::value, bool>::type = true>
+        typename std::enable_if<std::negation<std::is_integral<Container>>::value, bool>::type = true>
     explicit PositionAndIndexArray(Container const &positions)
         : PositionAndIndexArray(std::size(positions)) {
         using std::begin;
@@ -316,7 +317,7 @@ struct PositionAndIndexArray {
             });
     }
 
-    ~PositionAndIndexArray() {
+    ~PositionAndIndexArray() noexcept {
         for (auto &position_ptr : positions_) {
             aligned_free(position_ptr);
             position_ptr = nullptr;
@@ -350,15 +351,18 @@ struct PositionAndIndexIterator
           PositionAndIndexArray<R, T, IndexT> *, PositionAndIndexIterator<R, T, IndexT>> {
     typedef PositionAndIndexArray<R, T, IndexT> Array;
     typedef detail::PositionAndIndexIteratorBase<Array *, PositionAndIndexIterator> iterator_base;
-    typedef iterator_base::value_type value_type;
-    typedef iterator_base::difference_type difference_type;
-    typedef iterator_base::iterator_category iterator_category;
+    typedef typename iterator_base::value_type value_type;
+    typedef typename iterator_base::difference_type difference_type;
+    typedef typename iterator_base::iterator_category iterator_category;
     typedef typename Array::PositionAndIndexProxy reference;
     typedef void pointer;
 
     PositionAndIndexIterator() = default;
     PositionAndIndexIterator(Array *array, size_t offset) : iterator_base(array, offset) {}
     PositionAndIndexIterator(PositionAndIndexIterator const &) = default;
+
+    using iterator_base::operator==;
+    using iterator_base::operator!=;
 
     reference operator*() const { return (*this->array_)[this->offset_]; }
 };
@@ -372,9 +376,9 @@ struct ConstPositionAndIndexIterator : detail::PositionAndIndexIteratorBase<
 
     typedef detail::PositionAndIndexIteratorBase<Array const *, ConstPositionAndIndexIterator>
         iterator_base;
-    typedef iterator_base::value_type value_type;
-    typedef iterator_base::difference_type difference_type;
-    typedef iterator_base::iterator_category iterator_category;
+    typedef typename iterator_base::value_type value_type;
+    typedef typename iterator_base::difference_type difference_type;
+    typedef typename iterator_base::iterator_category iterator_category;
     typedef typename Array::PositionAndIndexProxy reference;
     typedef void pointer;
 
@@ -382,6 +386,9 @@ struct ConstPositionAndIndexIterator : detail::PositionAndIndexIteratorBase<
     ConstPositionAndIndexIterator(Array const *array, size_t offset)
         : iterator_base(array, offset) {}
     ConstPositionAndIndexIterator(ConstPositionAndIndexIterator const &) = default;
+
+    using iterator_base::operator==;
+    using iterator_base::operator!=;
 
     value_type operator*() const { return (*this->array_)[this->offset_]; }
 };
@@ -444,7 +451,6 @@ class KDTree {
         std::vector<PositionAndIndex> &&positions_and_indices,
         KDTreeConfiguration const &config = {});
 
-    KDTree(KDTree const &) = default;
     KDTree(KDTree &&) noexcept = default;
 
     tcb::span<const KDTreeNode> nodes() const noexcept { return nodes_; }

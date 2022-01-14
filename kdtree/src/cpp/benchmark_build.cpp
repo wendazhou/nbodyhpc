@@ -28,7 +28,7 @@ template <typename SelectionPolicy> void benchmark_build_tree(benchmark::State &
         auto positions = kdt::make_random_position_and_index(state.range(0), i);
         state.ResumeTiming();
 
-        build_tree(positions);
+        build_tree<SelectionPolicy>(positions);
         ++i;
     }
 }
@@ -37,8 +37,10 @@ template <typename SelectionPolicy> void benchmark_build_tree(benchmark::State &
 
 BENCHMARK_TEMPLATE(benchmark_build_tree, kdt::detail::FloydRivestSelectionPolicy)
     ->Arg(1 << 20)
-    ->Arg(1 << 24);
+    ->Arg(1 << 24)
+    ->Unit(benchmark::kSecond);
 
 BENCHMARK_TEMPLATE(benchmark_build_tree, kdt::detail::CxxSelectionPolicy)
     ->Arg(1 << 20)
-    ->Arg(1 << 24);
+    ->Arg(1 << 24)
+    ->Unit(benchmark::kSecond);

@@ -63,8 +63,7 @@ class PyKDTree : public wenda::kdtree::KDTree {
     float box_size_;
 
   public:
-    PyKDTree(PyKDTree const &) = default;
-    PyKDTree(PyKDTree &&) = default;
+    PyKDTree(PyKDTree &&) noexcept = default;
 
     size_t num_points() const noexcept { return positions().size(); }
     size_t num_nodes() const noexcept { return nodes().size(); }
