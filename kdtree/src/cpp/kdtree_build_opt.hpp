@@ -18,6 +18,9 @@ size_t partition_float_array(float *array, size_t n, float pivot);
 //! Simple quickselect implementation, uses an AVX2 optimized partitioning subroutine.
 void quickselect_float_array(float *array, size_t n, size_t k);
 
+//! Floyd-rivest selection algorithm specialized to float arrays with an optimized AVX2 partitioning subroutine.
+void floyd_rivest_float_array(float *array, size_t n, size_t k);
+
 void floyd_rivest_select_loop_position_array(
     PositionAndIndexArray<3> &array, std::ptrdiff_t left, std::ptrdiff_t right, std::ptrdiff_t k,
     int dimension);

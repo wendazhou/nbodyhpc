@@ -106,6 +106,23 @@ void benchmark_floyd_rivest_select(benchmark::State &state) {
     }
 }
 
+void benchmark_floyd_rivest_select_avx2(benchmark::State &state) {
+    uint32_t i = 0;
+
+    uint32_t num_points = state.range(0);
+
+    for (auto _ : state) {
+        state.PauseTiming();
+        std::vector<float> data(num_points);
+        fill_random(data.begin(), data.end(), i, [](auto r) { return r123::u01<float>(r[0]); });
+        state.ResumeTiming();
+
+        wenda::kdtree::detail::floyd_rivest_float_array(data.data(), data.size(), data.size() / 2);
+
+        benchmark::DoNotOptimize(data[data.size() / 2]);
+    }
+}
+
 } // namespace
 
 BENCHMARK_TEMPLATE(benchmark_build_tree, kdt::detail::FloydRivestSelectionPolicy)
@@ -123,3 +140,4 @@ BENCHMARK_TEMPLATE(benchmark_build_tree, kdt::detail::CxxSelectionPolicy)
 BENCHMARK(benchmark_avx2_select)->Range(256, 2 << 15);
 BENCHMARK(benchmark_stdlib_select)->Range(256, 2 << 15);
 BENCHMARK(benchmark_floyd_rivest_select)->Range(256, 2 << 15);
+BENCHMARK(benchmark_floyd_rivest_select_avx2)->Range(256, 2 << 15);

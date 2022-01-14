@@ -117,6 +117,50 @@ inline size_t partition_vectorized_8(
     biggest = calc_max(bv);  /* determine largest value in vector */
     return l_store;
 }
+
+void floyd_rivest_select_float_loop(float *array, ptrdiff_t left, ptrdiff_t right, ptrdiff_t k) {
+    using std::iter_swap;
+
+    while (right > left) {
+        auto size = right - left;
+
+        if (size > 600) {
+            auto n = right - left + 1;
+            auto i = k - left + 1;
+
+            double z = std::log(n);
+            double s = 0.5 * std::exp(2 * z / 3);
+            double sd = 0.5 * std::sqrt(z * s * (n - s) / n);
+
+            // We alternate choosing left and right pivots
+            if (i < n / 2) {
+                sd *= -1.0;
+            }
+            auto new_left = std::max(left, static_cast<ptrdiff_t>(k - i * s / n + sd));
+            auto new_right = std::min(right, static_cast<ptrdiff_t>(k + (n - i) * s / n + sd));
+            floyd_rivest_select_float_loop(array, new_left, new_right, k);
+        }
+
+        // Load the chosen pivot element
+        auto t = array[k];
+
+        // Place chosen pivot at end
+        iter_swap(array + right, array + k);
+
+        ptrdiff_t pivot_index = wenda::kdtree::detail::partition_float_array(array + left, right - left, t) + left;
+
+        iter_swap(array + pivot_index, array + right);
+
+        // Recurse into sub-partition
+        if (pivot_index <= k) {
+            left = pivot_index + 1;
+        }
+        if (k <= pivot_index) {
+            right = pivot_index - 1;
+        }
+    }
+}
+
 } // namespace
 
 namespace wenda {
@@ -188,8 +232,7 @@ void quickselect_float_array(float *array, size_t n, size_t k) {
 
         if (set_pivot_median_of_3) {
             pivot = median_of_3(array[idx1], array[idx2], array[idx3]);
-        }
-        else {
+        } else {
             set_pivot_median_of_3 = true;
         }
 
@@ -218,6 +261,10 @@ void quickselect_float_array(float *array, size_t n, size_t k) {
             left = pivot_index;
         }
     }
+}
+
+void floyd_rivest_float_array(float *array, size_t n, size_t k) {
+    floyd_rivest_select_float_loop(array, 0, n - 1, k);
 }
 
 void floyd_rivest_select_loop_position_array(

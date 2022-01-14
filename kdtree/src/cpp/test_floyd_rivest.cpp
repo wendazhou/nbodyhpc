@@ -116,12 +116,31 @@ TEST(SelectionTest, TestFloatArraySelectionExamples2) {
 
 TEST(SelectionTest, TestFloatArraySelection) {
     for (uint32_t i = 0; i < 100; ++i) {
-        std::vector<float> values(500 + 73 * i);
+        std::vector<float> values(500 + 73 + i);
         fill_random(values.begin(), values.end(), i, [](auto r) { return r123::u01<float>(r[0]); });
 
         auto k = values.size() / 2;
 
         wenda::kdtree::detail::quickselect_float_array(values.data(), values.size(), k);
+
+        auto order_k_statistic = values[k];
+
+        std::nth_element(values.begin(), values.begin() + k, values.end());
+
+        auto cxx_order_k_statistic = values[k];
+
+        EXPECT_EQ(order_k_statistic, cxx_order_k_statistic) << "i = " << i;
+    }
+}
+
+TEST(SelectionTest, TestFloatArrayFloydRivest) {
+    for (uint32_t i = 0; i < 100; ++i) {
+        std::vector<float> values(500 + 73 + i);
+        fill_random(values.begin(), values.end(), i, [](auto r) { return r123::u01<float>(r[0]); });
+
+        auto k = values.size() / 2;
+
+        wenda::kdtree::detail::floyd_rivest_float_array(values.data(), values.size(), k);
 
         auto order_k_statistic = values[k];
 
