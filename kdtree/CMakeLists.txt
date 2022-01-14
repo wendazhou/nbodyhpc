@@ -100,5 +100,8 @@ if(BUILD_TESTING)
     add_executable(kdtree_insertion_benchmark src/cpp/benchmark_insertion.cpp)
     target_link_libraries(kdtree_insertion_benchmark PRIVATE kdtree benchmark::benchmark_main)
     target_include_directories(kdtree_insertion_benchmark PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/third_party/random123/include)
+
+    add_executable(kdtree_build_benchmark src/cpp/benchmark_build.cpp)
+    target_link_libraries(kdtree_build_benchmark PRIVATE kdtree benchmark::benchmark_main)
 endif()
 

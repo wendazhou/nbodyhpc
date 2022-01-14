@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <future>
 #include <mutex>
 
@@ -13,6 +14,35 @@ namespace wenda {
 namespace kdtree {
 
 namespace detail {
+
+
+struct PositionAtDimensionCompare {
+    int dimension;
+
+    template<typename T>
+    bool operator()(T const &lhs, T const &rhs) const {
+        return lhs.position[dimension] < rhs.position[dimension];
+    }
+};
+
+//! Policy making use of the standard library nth_element function for selection
+struct CxxSelectionPolicy {
+    template<typename It>
+    void operator()(It beg, It median, It end, int dimension) const {
+        PositionAtDimensionCompare comp{dimension};
+        std::nth_element(beg, median, end, comp);
+    }
+};
+
+//! Policy making use of the Floyd-Rivest algorithm for selection
+struct FloydRivestSelectionPolicy {
+    template<typename It>
+    void operator()(It beg, It median, It end, int dimension) const {
+        PositionAtDimensionCompare comp{dimension};
+        floyd_rivest_select(beg, median, end, comp);
+    }
+};
+
 
 struct MutexLockSynchronization {
     typedef std::mutex mutex_t;
@@ -28,7 +58,7 @@ struct NullSynchonization {
     typedef NullLock lock_t;
 };
 
-template <typename Synchronization = MutexLockSynchronization> struct KDTreeBuilder {
+template <typename Synchronization = MutexLockSynchronization, typename SelectionPolicy = FloydRivestSelectionPolicy> struct KDTreeBuilder {
     std::vector<KDTree::KDTreeNode> &nodes_;
     tcb::span<PositionAndIndex> positions_;
     size_t leaf_size_;
@@ -60,13 +90,7 @@ template <typename Synchronization = MutexLockSynchronization> struct KDTreeBuil
         median_index = (median_index / block_size_) * block_size_;
         auto median_it = positions.begin() + median_index;
 
-        floyd_rivest_select(
-            positions.begin(),
-            median_it,
-            positions.end(),
-            [dimension](PositionAndIndex const &a, PositionAndIndex const &b) {
-                return a.position[dimension] < b.position[dimension];
-            });
+        SelectionPolicy()(positions.begin(), median_it, positions.end(), dimension);
 
         float split = median_it->position[dimension];
 
