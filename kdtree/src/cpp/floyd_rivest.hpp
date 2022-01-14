@@ -38,6 +38,8 @@ inline void floyd_rivest_select_loop(
             double z = std::log(n);
             double s = 0.5 * std::exp(2 * z / 3);
             double sd = 0.5 * std::sqrt(z * s * (n - s) / n);
+
+            // We alternate choosing left and right pivots
             if (i < n / 2) {
                 sd *= -1.0;
             }
@@ -49,33 +51,39 @@ inline void floyd_rivest_select_loop(
         DiffType i = left;
         DiffType j = right;
 
+        // Load the chosen pivot element
         iter_swap(begin + left, begin + k);
 
         const bool to_swap = comp(begin[left], begin[right]);
         if (to_swap) {
             iter_swap(begin + left, begin + right);
         }
-        // Make sure that non copyable types compile.
+
+        // Load current pivot
         auto t = to_swap ? begin + left : begin + right;
+
+        // Hoare partition scheme
         while (i < j) {
             iter_swap(begin + i, begin + j);
-            i++;
-            j--;
+            ++i;
+            --j;
             while (comp(begin[i], *t)) {
-                i++;
+                ++i;
             }
             while (comp(*t, begin[j])) {
-                j--;
+                --j;
             }
         }
 
+        // Restore pivot location
         if (to_swap) {
             iter_swap(begin + left, begin + j);
         } else {
-            j++;
+            ++j;
             iter_swap(begin + right, begin + j);
         }
 
+        // Recurse into sub-partition
         if (j <= k) {
             left = j + 1;
         }

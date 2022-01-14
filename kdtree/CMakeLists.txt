@@ -60,7 +60,7 @@ set(KDTREE_ASM_SOURCES src/cpp/kdtree_asm_systemv.asm)
 endif()
 
 add_library(kdtree_asm OBJECT ${KDTREE_ASM_SOURCES})
-add_library(kdtree STATIC src/cpp/kdtree.cpp)
+add_library(kdtree STATIC src/cpp/kdtree.cpp src/cpp/kdtree_selection.cpp)
 target_link_libraries(kdtree PRIVATE Threads::Threads kdtree_asm)
 target_compile_options(kdtree PUBLIC $<$<AND:$<CONFIG:DEBUG>,$<COMPILE_LANGUAGE:C,CXX>>:-fsanitize=address>)
 target_link_options(kdtree PUBLIC $<$<CONFIG:DEBUG>:-fsanitize=address>)
