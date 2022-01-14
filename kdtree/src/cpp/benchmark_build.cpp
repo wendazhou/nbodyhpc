@@ -5,6 +5,7 @@
 
 #include "kdtree.hpp"
 #include "kdtree_impl.hpp"
+#include "kdtree_build_opt.hpp"
 #include "kdtree_utils.hpp"
 
 namespace kdt = wenda::kdtree;
@@ -37,10 +38,12 @@ template <typename SelectionPolicy> void benchmark_build_tree(benchmark::State &
 
 BENCHMARK_TEMPLATE(benchmark_build_tree, kdt::detail::FloydRivestSelectionPolicy)
     ->Arg(1 << 20)
+    ->Arg(1 << 22)
     ->Arg(1 << 24)
     ->Unit(benchmark::kSecond);
 
 BENCHMARK_TEMPLATE(benchmark_build_tree, kdt::detail::CxxSelectionPolicy)
     ->Arg(1 << 20)
+    ->Arg(1 << 22)
     ->Arg(1 << 24)
     ->Unit(benchmark::kSecond);

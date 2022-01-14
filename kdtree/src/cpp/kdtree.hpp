@@ -324,23 +324,30 @@ struct PositionAndIndexArray {
         }
     }
 
-    size_t size() const { return indices_.size(); }
+    size_t size() const noexcept { return indices_.size(); }
 
-    PositionAndIndexProxy operator[](size_t i) {
+    PositionAndIndexProxy operator[](size_t i) noexcept {
         return PositionAndIndexProxy{
             {positions_[0][i], positions_[1][i], positions_[2][i]}, indices_[i]};
     }
 
-    PositionAndIndex operator[](size_t i) const {
+    PositionAndIndex operator[](size_t i) const noexcept {
         return PositionAndIndex{
             {positions_[0][i], positions_[1][i], positions_[2][i]}, indices_[i]};
     }
 
-    iterator begin() { return iterator(this, 0); }
-    iterator end() { return iterator(this, size()); }
+    iterator begin() noexcept { return iterator(this, 0); }
+    iterator end() noexcept { return iterator(this, size()); }
 
-    const_iterator begin() const { return const_iterator(this, 0); }
-    const_iterator end() const { return const_iterator(this, size()); }
+    const_iterator begin() const noexcept { return const_iterator(this, 0); }
+    const_iterator end() const noexcept { return const_iterator(this, size()); }
+
+    void swap_elements(size_t i, size_t j) noexcept {
+        std::swap(indices_[i], indices_[j]);
+        for (size_t k = 0; k < R; ++k) {
+            std::swap(positions_[k][i], positions_[k][j]);
+        }
+    }
 };
 
 namespace detail {
@@ -397,10 +404,7 @@ template <size_t R, typename T, typename IndexT>
 void iter_swap(
     PositionAndIndexIterator<R, T, IndexT> const &it1,
     PositionAndIndexIterator<R, T, IndexT> const &it2) noexcept {
-    for (size_t i = 0; i < R; ++i) {
-        std::swap(it1.array_->positions_[i][it1.offset_], it2.array_->positions_[i][it2.offset_]);
-    }
-    std::swap(it1.array_->indices_[it1.offset_], it2.array_->indices_[it2.offset_]);
+    it1.array_->swap_elements(it1.offset_, it2.offset_);
 }
 
 } // namespace detail

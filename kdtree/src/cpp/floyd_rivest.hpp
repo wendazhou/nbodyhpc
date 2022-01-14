@@ -92,7 +92,7 @@ inline void floyd_rivest_select(Iter begin, Iter mid, Iter end, Compare const &c
     if (mid == end)
         return;
     typedef typename std::iterator_traits<Iter>::difference_type DiffType;
-    detail::floyd_rivest_select_loop<Iter>(
+    detail::floyd_rivest_select_loop(
         begin,
         DiffType{0},
         static_cast<DiffType>(end - begin - 1),
