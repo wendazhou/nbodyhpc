@@ -187,6 +187,7 @@ REGISTER_TYPED_TEST_SUITE_P(TestSelectionPolicy, SelectMedian);
 
 typedef ::testing::Types<
     wenda::kdtree::detail::FloydRivestSelectionPolicy,
-    wenda::kdtree::detail::FloydRivestOptSelectionPolicy>
+    wenda::kdtree::detail::FloydRivestOptSelectionPolicy,
+    wenda::kdtree::detail::FloydRivestAvxSelectionPolicy>
     SelectionPolicies;
 INSTANTIATE_TYPED_TEST_SUITE_P(TestSelection, TestSelectionPolicy, SelectionPolicies);

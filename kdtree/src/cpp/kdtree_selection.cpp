@@ -24,22 +24,179 @@ inline float calc_max(__m256 vec) { /* maximum of 8 floats */
     return _mm_extract_ps(_mm256_castps256_ps128(vec), 0);
 }
 
+struct DummyData {
+    void permute(__m256i perm) {}
+    DummyData load(ptrdiff_t idx) const { return DummyData{}; }
+    void store(DummyData const &, ptrdiff_t idx) {}
+    void swap_elements(ptrdiff_t, ptrdiff_t) {}
+};
+
+template <size_t R, typename T, typename IndexT> struct PositionAndIndexData {
+    struct Vec {
+        std::array<__m256, R> positions;
+        __m256i indices;
+
+        void permute(__m256i perm) {
+            for (size_t i = 0; i < R - 1; ++i) {
+                positions[i] = _mm256_permutevar8x32_ps(positions[i], perm);
+            }
+
+            indices = _mm256_permutevar8x32_epi32(indices, perm);
+        }
+    };
+
+    int dimension_;
+    std::array<T *, R> positions_;
+    IndexT *indices_;
+
+    Vec load(ptrdiff_t idx) const {
+        std::array<__m256, R> positions;
+
+        for (size_t i = 0; i < R; ++i) {
+            positions[i] = _mm256_loadu_ps(positions_[i] + idx);
+        }
+
+        return {positions, _mm256_loadu_si256(reinterpret_cast<__m256i *>(indices_ + idx))};
+    }
+
+    void store(Vec const &d, ptrdiff_t idx) {
+        for (size_t i = 0; i < R; ++i) {
+            _mm256_storeu_ps(positions_[i] + idx, d.positions[i]);
+        }
+
+        _mm256_storeu_si256(reinterpret_cast<__m256i *>(indices_ + idx), d.indices);
+    }
+
+    void swap_elements(ptrdiff_t i, ptrdiff_t j) {
+        for (size_t k = 0; k < R; ++k) {
+            std::swap(positions_[k][i], positions_[k][j]);
+        }
+
+        std::swap(indices_[i], indices_[j]);
+    }
+};
+
+template <typename T = DummyData>
+int partition_vec(__m256 &curr_vec, const __m256 &pivot_vec, T &data) {
+    __m256 compared = _mm256_cmp_ps(curr_vec, pivot_vec, _CMP_NLT_US);
+    int mm = _mm256_movemask_ps(compared);
+
+    auto perm = partition_permutation_masks[mm];
+
+    /* how many ones, each 1 stands for an element greater than pivot */
+    int amount_gt_pivot = _mm_popcnt_u32(mm);
+    data.permute(perm);
+
+    curr_vec = _mm256_permutevar8x32_ps(curr_vec, perm);
+
+    return amount_gt_pivot;
+}
+
+//! Partitions a vector of 8 elements according to the given value.
+//! This function uses a pre-computed lookup table.
+int partition_vec(__m256 &curr_vec, const __m256 &pivot_vec) {
+    DummyData data;
+    return partition_vec(curr_vec, pivot_vec, data);
+}
+
 int partition_vec(
     __m256 &curr_vec, const __m256 &pivot_vec, __m256 &smallest_vec, __m256 &biggest_vec) {
-    /* which elements are larger than the pivot */
-    __m256 compared = _mm256_cmp_ps(curr_vec, pivot_vec, _CMP_NLT_US);
     /* update the smallest and largest values of the array */
     smallest_vec = _mm256_min_ps(curr_vec, smallest_vec);
     biggest_vec = _mm256_max_ps(curr_vec, biggest_vec);
-    /* extract the most significant bit from each integer of the vector */
-    int mm = _mm256_movemask_ps(compared);
-    /* how many ones, each 1 stands for an element greater than pivot */
-    int amount_gt_pivot = _mm_popcnt_u32(mm);
-    /* permute elements larger than pivot to the right, and,
-     * smaller than or equal to the pivot, to the left */
-    curr_vec = _mm256_permutevar8x32_ps(curr_vec, partition_permutation_masks[mm]);
-    /* return how many elements are greater than pivot */
-    return amount_gt_pivot;
+
+    return partition_vec(curr_vec, pivot_vec);
+}
+
+template <typename T = DummyData>
+inline size_t
+partition_vectorized_8(float *arr, ptrdiff_t left, ptrdiff_t right, float pivot, T &data) {
+    /* make array length divisible by eight, shortening the array */
+    for (auto i = (right - left) % 8; i > 0; --i) {
+        if (arr[left] < pivot) {
+            ++left;
+        } else {
+            std::swap(arr[left], arr[--right]);
+            data.swap_elements(left, right);
+        }
+    }
+
+    if (left == right)
+        return left; /* less than 8 elements in the array */
+
+    auto pivot_vec = _mm256_set1_ps(pivot); /* fill vector with pivot */
+
+    if (right - left == 8) { /* if 8 elements left after shortening */
+        auto v = _mm256_loadu_ps(arr + left);
+        auto d = data.load(left);
+
+        int amount_gt_pivot = partition_vec(v, pivot_vec, d);
+
+        _mm256_storeu_ps(arr + left, v);
+        data.store(d, right);
+
+        return left + (8 - amount_gt_pivot);
+    }
+
+    /* first and last 8 values are partitioned at the end */
+    auto vec_left = _mm256_loadu_ps(arr + left);         /* first 8 values */
+    auto vec_right = _mm256_loadu_ps(arr + (right - 8)); /* last 8 values  */
+
+    auto d_left = data.load(left);
+    auto d_right = data.load(right - 8);
+
+    /* store points of the vectors */
+    int r_store = right - 8; /* right store point */
+    int l_store = left;      /* left store point */
+    /* indices for loading the elements */
+    left += 8;  /* increase, because first 8 elements are cached */
+    right -= 8; /* decrease, because last 8 elements are cached */
+
+    while (right - left != 0) {  /* partition 8 elements per iteration */
+        __m256 curr_vec;         /* vector to be partitioned */
+        decltype(d_left) d_curr; /* data to be partitioned */
+
+        /* if fewer elements are stored on the right side of the array,
+         * then next elements are loaded from the right side,
+         * otherwise from the left side */
+        if ((r_store + 8) - right < left - l_store) {
+            right -= 8;
+            curr_vec = _mm256_loadu_ps(arr + right);
+            d_curr = data.load(right);
+        } else {
+            curr_vec = _mm256_loadu_ps(arr + left);
+            d_curr = data.load(left);
+            left += 8;
+        }
+        /* partition the current vector and save it on both sides of the array */
+        int amount_gt_pivot = partition_vec(curr_vec, pivot_vec, d_curr);
+
+        _mm256_storeu_ps(arr + l_store, curr_vec);
+        _mm256_storeu_ps(arr + r_store, curr_vec);
+
+        data.store(d_curr, l_store);
+        data.store(d_curr, r_store);
+
+        /* update store points */
+        r_store -= amount_gt_pivot;
+        l_store += (8 - amount_gt_pivot);
+    }
+
+    /* partition and save vec_left */
+    int amount_gt_pivot = partition_vec(vec_left, pivot_vec, d_left);
+    _mm256_storeu_ps(arr + l_store, vec_left);
+    _mm256_storeu_ps(arr + r_store, vec_left);
+    data.store(d_left, l_store);
+    data.store(d_left, r_store);
+
+    l_store += (8 - amount_gt_pivot);
+    /* partition and save vec_right */
+    amount_gt_pivot = partition_vec(vec_right, pivot_vec, d_right);
+    _mm256_storeu_ps(arr + l_store, vec_right);
+    data.store(d_right, l_store);
+    l_store += (8 - amount_gt_pivot);
+
+    return l_store;
 }
 
 inline size_t partition_vectorized_8(
@@ -147,7 +304,8 @@ void floyd_rivest_select_float_loop(float *array, ptrdiff_t left, ptrdiff_t righ
         // Place chosen pivot at end
         iter_swap(array + right, array + k);
 
-        ptrdiff_t pivot_index = wenda::kdtree::detail::partition_float_array(array + left, right - left, t) + left;
+        ptrdiff_t pivot_index =
+            wenda::kdtree::detail::partition_float_array(array + left, right - left, t) + left;
 
         iter_swap(array + pivot_index, array + right);
 
@@ -167,9 +325,8 @@ namespace wenda {
 namespace kdtree {
 namespace detail {
 size_t partition_float_array(float *array, size_t n, float pivot) {
-    float smallest = 0.0f;
-    float biggest = 0.0f;
-    return partition_vectorized_8(array, 0, n, pivot, smallest, biggest);
+    DummyData dummy;
+    return partition_vectorized_8(array, 0, n, pivot, dummy);
 }
 
 template <typename T> T const &median_of_3(T const &a, T const &b, T const &c) {
@@ -265,6 +422,26 @@ void quickselect_float_array(float *array, size_t n, size_t k) {
 
 void floyd_rivest_float_array(float *array, size_t n, size_t k) {
     floyd_rivest_select_float_loop(array, 0, n - 1, k);
+}
+
+void floyd_rivest_select_loop_position_array_avx2(
+    PositionAndIndexArray<3> &array, std::ptrdiff_t left, std::ptrdiff_t right, std::ptrdiff_t k,
+    int dimension) {
+
+    std::array<float *, 2> positions_not_dimension;
+
+    {
+        size_t j = 0;
+        for (size_t i = 0; i < 3; ++i) {
+            if (i == dimension) {
+                continue;
+            }
+            positions_not_dimension[j++] = array.positions_[i];
+        }
+    }
+
+    PositionAndIndexData<2, float, uint32_t> data{dimension, positions_not_dimension, array.indices_.data()};
+    partition_vectorized_8(array.positions_[dimension], left, right, k, data);
 }
 
 void floyd_rivest_select_loop_position_array(
