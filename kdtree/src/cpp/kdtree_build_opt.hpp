@@ -39,7 +39,7 @@ struct FloydRivestOptSelectionPolicy {
         }
 
         floyd_rivest_select_loop_position_array(
-            *beg.array_, beg.offset_, end - beg - 1, med - beg, dimension);
+            *beg.array_, beg.offset_, end.offset_ - 1, med - beg, dimension);
     }
 };
 
@@ -52,7 +52,7 @@ struct FloydRivestAvxSelectionPolicy {
         }
 
         floyd_rivest_select_loop_position_array_avx2(
-            *beg.array_, beg.offset_, end - beg - 1, med - beg, dimension);
+            *beg.array_, beg.offset_, end.offset_ - 1, med - beg, dimension);
     }
 };
 

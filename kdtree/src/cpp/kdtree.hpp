@@ -226,7 +226,9 @@ template <typename ArrayBase, typename Derived> struct PositionAndIndexIteratorB
         return *static_cast<Derived *>(this);
     }
 
-    decltype(auto) operator[](ptrdiff_t n) { return *(*static_cast<Derived *>(this) + n); }
+    decltype(auto) operator[](ptrdiff_t n) const {
+        return *(*static_cast<const Derived *>(this) + n);
+    }
 
     Derived operator+(ptrdiff_t n) const { return Derived(array_, offset_ + n); }
 
@@ -256,21 +258,38 @@ template <size_t R, typename T, typename IndexT> struct PositionAndIndexIterator
 
 template <size_t R, typename T, typename IndexT> struct ConstPositionAndIndexIterator;
 
+template <size_t R, typename T, typename IndexT> struct PositionAndIndexProxy {
+    std::array<std::reference_wrapper<float>, R> position;
+    uint32_t &index;
+
+    operator PositionAndIndex() const {
+        return {std::array<float, 3>{position[0], position[1], position[2]}, index};
+    }
+
+    PositionAndIndexProxy &operator=(PositionAndIndex const &other) {
+        position[0].get() = other.position[0];
+        position[1].get() = other.position[1];
+        position[2].get() = other.position[2];
+        index = other.index;
+        return *this;
+    }
+
+    PositionAndIndexProxy &operator=(PositionAndIndexProxy const &other) {
+        position[0].get() = other.position[0];
+        position[1].get() = other.position[1];
+        position[2].get() = other.position[2];
+        index = other.index;
+        return *this;
+    }
+};
+
 } // namespace detail
 
 template <size_t R = 3, typename T = float, typename IndexT = uint32_t>
 struct PositionAndIndexArray {
-    struct PositionAndIndexProxy {
-        std::array<std::reference_wrapper<float>, R> position;
-        uint32_t &index;
-
-        operator PositionAndIndex() const {
-            return {std::array<float, 3>{position[0], position[1], position[2]}, index};
-        }
-    };
-
     typedef detail::PositionAndIndexIterator<R, T, IndexT> iterator;
     typedef detail::ConstPositionAndIndexIterator<R, T, IndexT> const_iterator;
+    typedef detail::PositionAndIndexProxy<R, T, IndexT> PositionAndIndexProxy;
 
     std::array<T *, R> positions_;
     std::vector<IndexT> indices_;
@@ -298,7 +317,8 @@ struct PositionAndIndexArray {
 
     template <
         typename Container,
-        typename std::enable_if<std::negation<std::is_integral<Container>>::value, bool>::type = true>
+        typename std::enable_if<std::negation<std::is_integral<Container>>::value, bool>::type =
+            true>
     explicit PositionAndIndexArray(Container const &positions)
         : PositionAndIndexArray(std::size(positions)) {
         using std::begin;
@@ -375,6 +395,12 @@ struct PositionAndIndexIterator
 };
 
 template <size_t R, typename T, typename IndexT>
+PositionAndIndexIterator<R, T, IndexT>
+operator+(ptrdiff_t n, PositionAndIndexIterator<R, T, IndexT> const &it) {
+    return it + n;
+}
+
+template <size_t R, typename T, typename IndexT>
 struct ConstPositionAndIndexIterator : detail::PositionAndIndexIteratorBase<
                                            PositionAndIndexArray<R, T, IndexT> const *,
                                            ConstPositionAndIndexIterator<R, T, IndexT>> {
@@ -405,6 +431,21 @@ void iter_swap(
     PositionAndIndexIterator<R, T, IndexT> const &it1,
     PositionAndIndexIterator<R, T, IndexT> const &it2) noexcept {
     it1.array_->swap_elements(it1.offset_, it2.offset_);
+}
+
+template <size_t R, typename T, typename IndexT>
+PositionAndIndex iter_move(PositionAndIndexIterator<R, T, IndexT> const &it) {
+    return (*const_cast<const PositionAndIndexArray<R, T, IndexT>*>(it.array_))[it.offset_];
+}
+
+template <size_t R, typename T, typename IndexT>
+void swap(PositionAndIndexProxy<R, T, IndexT> lhs, PositionAndIndexProxy<R, T, IndexT> rhs) {
+    using std::swap;
+    for (size_t i = 0; i < R; ++i) {
+        swap(lhs.position[i].get(), rhs.position[i].get());
+    }
+
+    swap(lhs.index, rhs.index);
 }
 
 } // namespace detail

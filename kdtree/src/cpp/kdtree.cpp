@@ -62,6 +62,8 @@ KDTree::KDTree(
              std::numeric_limits<float>::max()},
             -1u});
 
+    positions_ = PositionAndIndexArray(std::move(positions_and_indices));
+
     if (max_threads > 1 && positions_and_indices.size() >= 2 * num_points_per_thread) {
         double num_threads = static_cast<double>(positions_.size()) / num_points_per_thread;
         num_threads = std::max(num_threads, static_cast<double>(max_threads));
@@ -70,15 +72,13 @@ KDTree::KDTree(
 
         typedef detail::MutexLockSynchronization Synchronization;
         detail::KDTreeBuilder<Synchronization> builder(
-            nodes_, positions_and_indices, config.leaf_size, config.block_size);
+            nodes_, positions_, config.leaf_size, config.block_size);
         builder.build(log2_threads);
     } else {
         detail::KDTreeBuilder<detail::NullSynchonization> builder(
-            nodes_, positions_and_indices, config.leaf_size, config.block_size);
+            nodes_, positions_, config.leaf_size, config.block_size);
         builder.build(0);
     }
-
-    positions_ = PositionAndIndexArray(std::move(positions_and_indices));
 }
 
 template <typename Distance>

@@ -34,7 +34,7 @@ template <typename It, typename Fn> void fill_random(It beg, It end, uint32_t se
 }
 
 template <typename SelectionPolicy = kdt::detail::FloydRivestSelectionPolicy>
-void build_tree(std::vector<kdt::PositionAndIndex> &positions) {
+void build_tree(kdt::PositionAndIndexArray<3, float, uint32_t> &positions) {
     std::vector<kdt::KDTree::KDTreeNode> nodes;
 
     kdt::detail::KDTreeBuilder<kdt::detail::NullSynchonization, SelectionPolicy> builder(
@@ -47,7 +47,7 @@ template <typename SelectionPolicy> void benchmark_build_tree(benchmark::State &
 
     for (auto _ : state) {
         state.PauseTiming();
-        auto positions = kdt::make_random_position_and_index(state.range(0), i);
+        auto positions = kdt::make_random_position_and_index_array<3>(state.range(0), i);
         state.ResumeTiming();
 
         build_tree<SelectionPolicy>(positions);
@@ -132,6 +132,11 @@ BENCHMARK_TEMPLATE(benchmark_build_tree, kdt::detail::FloydRivestSelectionPolicy
     ->Unit(benchmark::kSecond);
 
 BENCHMARK_TEMPLATE(benchmark_build_tree, kdt::detail::CxxSelectionPolicy)
+    ->Arg(1 << 20)
+    ->Arg(1 << 22)
+    ->Unit(benchmark::kSecond);
+
+BENCHMARK_TEMPLATE(benchmark_build_tree, kdt::detail::FloydRivestAvxSelectionPolicy)
     ->Arg(1 << 20)
     ->Arg(1 << 22)
     ->Arg(1 << 24)

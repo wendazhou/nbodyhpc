@@ -115,7 +115,7 @@ TEST(SelectionTest, TestFloatArraySelectionExamples2) {
 }
 
 TEST(SelectionTest, TestFloatArraySelection) {
-    for (uint32_t i = 0; i < 100; ++i) {
+    for (uint32_t i = 0; i < 50; ++i) {
         std::vector<float> values(500 + 73 + i);
         fill_random(values.begin(), values.end(), i, [](auto r) { return r123::u01<float>(r[0]); });
 
@@ -134,7 +134,7 @@ TEST(SelectionTest, TestFloatArraySelection) {
 }
 
 TEST(SelectionTest, TestFloatArrayFloydRivest) {
-    for (uint32_t i = 0; i < 100; ++i) {
+    for (uint32_t i = 0; i < 50; ++i) {
         std::vector<float> values(500 + 73 + i);
         fill_random(values.begin(), values.end(), i, [](auto r) { return r123::u01<float>(r[0]); });
 
@@ -164,23 +164,31 @@ template <typename SelectionPolicy> class TestSelectionPolicy : public ::testing
 TYPED_TEST_SUITE_P(TestSelectionPolicy);
 
 TYPED_TEST_P(TestSelectionPolicy, SelectMedian) {
-    auto positions = wenda::kdtree::make_random_position_and_index_array(10000, 42);
-    int dimension = 0;
+    for(int i = 0; i < 10; ++i) {
+        auto positions = wenda::kdtree::make_random_position_and_index_array(1000, 42);
+        int dimension = 0;
 
-    auto median_offset = positions.size() / 2;
-    auto median_it = positions.begin() + median_offset;
-    this->selection_(positions.begin(), median_it, positions.end(), dimension);
+        size_t beg_idx = i * 4;
+        size_t end_idx = positions.size() - i * 3;
+        size_t median_idx = positions.size() / 2 - i * 2;
 
-    auto median_value = (*median_it).position[dimension];
+        auto beg_it = positions.begin() + beg_idx;
+        auto end_it = positions.begin() + end_idx;
 
-    std::nth_element(
-        positions.positions_[dimension],
-        positions.positions_[dimension] + median_offset,
-        positions.positions_[0] + positions.size());
+        auto median_it = positions.begin() + median_idx;
+        this->selection_(beg_it, median_it, end_it, dimension);
 
-    auto expected_median_value = positions.positions_[dimension][median_offset];
+        auto median_value = (*median_it).position[dimension];
 
-    ASSERT_EQ(median_value, expected_median_value);
+        std::nth_element(
+            positions.positions_[dimension] + beg_idx,
+            positions.positions_[dimension] + median_idx,
+            positions.positions_[dimension] + end_idx);
+
+        auto expected_median_value = positions.positions_[dimension][median_idx];
+
+        EXPECT_EQ(median_value, expected_median_value) << "i = " << i;
+    }
 }
 
 REGISTER_TYPED_TEST_SUITE_P(TestSelectionPolicy, SelectMedian);

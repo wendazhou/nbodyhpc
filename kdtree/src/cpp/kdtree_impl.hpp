@@ -4,6 +4,10 @@
 #include <future>
 #include <mutex>
 
+#if defined(__cpp_lib_ranges)
+#include <ranges>
+#endif
+
 #include "kdtree.hpp"
 #include "kdtree_opt.hpp"
 #include "floyd_rivest.hpp"
@@ -19,8 +23,8 @@ namespace detail {
 struct PositionAtDimensionCompare {
     int dimension;
 
-    template<typename T>
-    bool operator()(T const &lhs, T const &rhs) const {
+    template<typename T, typename U>
+    bool operator()(T const &lhs, U const &rhs) const {
         return lhs.position[dimension] < rhs.position[dimension];
     }
 };
@@ -30,7 +34,12 @@ struct CxxSelectionPolicy {
     template<typename It>
     void operator()(It beg, It median, It end, int dimension) const {
         PositionAtDimensionCompare comp{dimension};
+
+#if defined(__cpp_lib_ranges)
+        std::ranges::nth_element({beg, end}, median, comp);
+#else
         std::nth_element(beg, median, end, comp);
+#endif
     }
 };
 
@@ -60,13 +69,13 @@ struct NullSynchonization {
 
 template <typename Synchronization = MutexLockSynchronization, typename SelectionPolicy = FloydRivestSelectionPolicy> struct KDTreeBuilder {
     std::vector<KDTree::KDTreeNode> &nodes_;
-    tcb::span<PositionAndIndex> positions_;
+    PositionAndIndexArray<3>& positions_;
     size_t leaf_size_;
     size_t block_size_;
     typename Synchronization::mutex_t mutex_;
 
     KDTreeBuilder(
-        std::vector<KDTree::KDTreeNode> &nodes, tcb::span<PositionAndIndex> positions,
+        std::vector<KDTree::KDTreeNode> &nodes, PositionAndIndexArray<3>& positions,
         size_t leaf_size, size_t block_size)
         : nodes_(nodes), positions_(positions), leaf_size_(std::max(leaf_size, 2 * block_size)), block_size_(block_size) {}
 
@@ -77,22 +86,20 @@ template <typename Synchronization = MutexLockSynchronization, typename Selectio
     uint32_t build_node(int dimension, uint32_t left, uint32_t count, int thread_levels) {
         typedef typename Synchronization::lock_t lock_t;
 
-        auto positions = positions_.subspan(left, count);
-
-        if (positions.size() <= leaf_size_) {
+        if (count <= leaf_size_) {
             lock_t lock(mutex_);
             nodes_.push_back({-1, 0.0f, left, left + count});
             return static_cast<uint32_t>(nodes_.size() - 1);
         }
 
         // Compute block-size rounded median.
-        uint32_t median_index = positions.size() / 2;
-        median_index = (median_index / block_size_) * block_size_;
-        auto median_it = positions.begin() + median_index;
+        uint32_t median_offset = count / 2;
+        median_offset = (median_offset / block_size_) * block_size_;
+        auto median_it = positions_.begin() + left + median_offset;
 
-        SelectionPolicy()(positions.begin(), median_it, positions.end(), dimension);
+        SelectionPolicy()(positions_.begin() + left, median_it, positions_.begin() + left + count, dimension);
 
-        float split = median_it->position[dimension];
+        float split = (*median_it).position[dimension];
 
         uint32_t current_idx;
 
@@ -106,9 +113,9 @@ template <typename Synchronization = MutexLockSynchronization, typename Selectio
 
         if (thread_levels > 0) {
             std::tie(left_idx, right_idx) =
-                build_left_right_threaded(dimension, left, median_index, count, thread_levels - 1);
+                build_left_right_threaded(dimension, left, median_offset, count, thread_levels - 1);
         } else {
-            std::tie(left_idx, right_idx) = build_left_right_nonthreaded(dimension, left, median_index, count);
+            std::tie(left_idx, right_idx) = build_left_right_nonthreaded(dimension, left, median_offset, count);
         }
 
         {
