@@ -71,7 +71,7 @@ if(MSVC)
     target_compile_options(kdtree PRIVATE $<$<COMPILE_LANGUAGE:C,CXX>:/arch:AVX2>)
     target_compile_options(kdtree_asm PRIVATE $<$<COMPILE_LANGUAGE:ASM_MASM>:/Zd>)
 else()
-    target_compile_options(kdtree PUBLIC $<$<COMPILE_LANGUAGE:C,CXX>:-mavx2> $<$<COMPILE_LANGUAGE:C,CXX>:-mtune=haswell>)
+    target_compile_options(kdtree PUBLIC $<$<COMPILE_LANGUAGE:C,CXX>:-mavx2> $<$<COMPILE_LANGUAGE:C,CXX>:-mtune=haswell> -fconcepts-diagnostics-depth=2)
     target_compile_options(kdtree_asm PRIVATE $<$<COMPILE_LANGUAGE:ASM_NASM>:-g>)
 endif()
 

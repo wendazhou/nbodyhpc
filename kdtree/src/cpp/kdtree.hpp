@@ -266,7 +266,7 @@ template <size_t R, typename T, typename IndexT> struct PositionAndIndexProxy {
         return {std::array<float, 3>{position[0], position[1], position[2]}, index};
     }
 
-    PositionAndIndexProxy &operator=(PositionAndIndex const &other) {
+    const PositionAndIndexProxy &operator=(PositionAndIndex const &other) const {
         position[0].get() = other.position[0];
         position[1].get() = other.position[1];
         position[2].get() = other.position[2];
@@ -274,7 +274,7 @@ template <size_t R, typename T, typename IndexT> struct PositionAndIndexProxy {
         return *this;
     }
 
-    PositionAndIndexProxy &operator=(PositionAndIndexProxy const &other) {
+    const PositionAndIndexProxy &operator=(PositionAndIndexProxy const &other) const {
         position[0].get() = other.position[0];
         position[1].get() = other.position[1];
         position[2].get() = other.position[2];

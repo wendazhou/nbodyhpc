@@ -24,7 +24,7 @@ struct PositionAtDimensionCompare {
     int dimension;
 
     template<typename T, typename U>
-    bool operator()(T const &lhs, U const &rhs) const {
+    bool operator()(T const &lhs, U const &rhs) const noexcept {
         return lhs.position[dimension] < rhs.position[dimension];
     }
 };
@@ -36,7 +36,10 @@ struct CxxSelectionPolicy {
         PositionAtDimensionCompare comp{dimension};
 
 #if defined(__cpp_lib_ranges)
-        std::ranges::nth_element({beg, end}, median, comp);
+        // When available, we use ranges::nth_element to select the median
+        // as it is better integrated with the customization points that we use
+        // to support proxy ranges.
+        std::ranges::nth_element(std::ranges::subrange(beg, end), median, comp);
 #else
         std::nth_element(beg, median, end, comp);
 #endif

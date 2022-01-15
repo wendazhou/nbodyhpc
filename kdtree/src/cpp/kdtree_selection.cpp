@@ -33,7 +33,7 @@ struct DummyData {
 
 template <size_t R, typename T, typename IndexT> struct PositionAndIndexData {
     struct Vec {
-        std::array<__m256, R> positions;
+        __m256 positions[R];
         __m256i indices;
 
         void permute(__m256i perm) {
@@ -50,13 +50,14 @@ template <size_t R, typename T, typename IndexT> struct PositionAndIndexData {
     IndexT *indices_;
 
     Vec load(ptrdiff_t idx) const {
-        std::array<__m256, R> positions;
+        Vec result;
 
         for (size_t i = 0; i < R; ++i) {
-            positions[i] = _mm256_loadu_ps(positions_[i] + idx);
+            result.positions[i] = _mm256_loadu_ps(positions_[i] + idx);
         }
 
-        return {positions, _mm256_loadu_si256(reinterpret_cast<__m256i *>(indices_ + idx))};
+        result.indices = _mm256_loadu_si256(reinterpret_cast<__m256i *>(indices_ + idx));
+        return result;
     }
 
     void store(Vec const &d, ptrdiff_t idx) {
