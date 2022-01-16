@@ -37,7 +37,7 @@ template <size_t R, typename T, typename IndexT> struct PositionAndIndexData {
         __m256i indices;
 
         void permute(__m256i perm) {
-            for (size_t i = 0; i < R - 1; ++i) {
+            for (size_t i = 0; i < R; ++i) {
                 positions[i] = _mm256_permutevar8x32_ps(positions[i], perm);
             }
 
@@ -45,7 +45,6 @@ template <size_t R, typename T, typename IndexT> struct PositionAndIndexData {
         }
     };
 
-    int dimension_;
     std::array<T *, R> positions_;
     IndexT *indices_;
 
@@ -489,8 +488,7 @@ void floyd_rivest_select_loop_position_array_avx2(
         }
     }
 
-    PositionAndIndexData<2, float, uint32_t> data{
-        dimension, positions_not_dimension, array.indices_.data()};
+    PositionAndIndexData<2, float, uint32_t> data{positions_not_dimension, array.indices_.data()};
 
     floyd_rivest_select_position_index_loop(array.positions_[dimension], left, right, k, data);
 }

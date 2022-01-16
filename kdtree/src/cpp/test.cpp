@@ -47,7 +47,7 @@ TEST_P(KDTreeRandomTest, BuildAndFindNearestClass) {
     auto positions =
         wenda::kdtree::make_random_position_and_index_array(GetParam(), 42, 1.0, block_size);
 
-    auto tree = wenda::kdtree::KDTree(positions, {.leaf_size = 8, .block_size = block_size});
+    auto tree = wenda::kdtree::KDTree(positions, {.leaf_size = 32, .block_size = block_size});
 
     ASSERT_TRUE(
         std::all_of(tree.nodes().begin(), tree.nodes().end(), [block_size](auto const &node) {

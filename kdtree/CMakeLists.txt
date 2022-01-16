@@ -90,7 +90,7 @@ pybind11_add_module(_impl src/cpp/pybind.cpp)
 target_link_libraries(_impl PRIVATE kdtree)
 
 if(BUILD_TESTING)
-    add_executable(kdtree_test src/cpp/test.cpp src/cpp/test_opt.cpp src/cpp/test_asm.cpp src/cpp/test_inserters.cpp src/cpp/test_floyd_rivest.cpp)
+    add_executable(kdtree_test src/cpp/test.cpp src/cpp/test_opt.cpp src/cpp/test_asm.cpp src/cpp/test_inserters.cpp src/cpp/test_floyd_rivest.cpp src/cpp/test_builders.cpp)
     target_link_libraries(kdtree_test PRIVATE kdtree gtest_main)
     target_include_directories(kdtree_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/third_party/random123/include)
 

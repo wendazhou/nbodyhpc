@@ -181,6 +181,13 @@ TYPED_TEST_P(TestSelectionPolicy, SelectMedian) {
         auto positions = wenda::kdtree::make_random_position_and_index_array(config.size, 42);
         auto positions_copy = wenda::kdtree::PositionAndIndexArray(positions);
 
+        // make a copy of the positions (without associated indices)
+        std::vector<std::tuple<float, float, float>> positions_data(positions.size());
+        std::transform(
+            positions.begin(), positions.end(), positions_data.begin(), [](auto const &p) {
+                return std::make_tuple(p.position[0], p.position[1], p.position[2]);
+            });
+
         int dimension = i % 3;
 
         auto beg_it = positions.begin() + config.beg_index;
@@ -189,7 +196,23 @@ TYPED_TEST_P(TestSelectionPolicy, SelectMedian) {
         auto median_it = positions.begin() + config.mid_index;
         this->selection_(beg_it, median_it, end_it, dimension);
 
+        // Check that all tuples have been preserved
+        size_t idx_tuple_not_preserved = positions.size();
+
+        for (size_t i = 0; i < positions.size(); ++i) {
+            auto pos = positions[i].position;
+            auto idx = positions[i].index;
+            auto pos_tuple = std::make_tuple(pos[0], pos[1], pos[2]);
+            if (positions_data[idx] != pos_tuple) {
+                idx_tuple_not_preserved = i;
+                break;
+            }
+        }
+
+        EXPECT_EQ(idx_tuple_not_preserved, positions.size()) << " selection did not preserve tuple at given index.";
+
         auto median_value = (*median_it).position[dimension];
+        auto selection_other_coord = (*median_it).position[(dimension + 1) % 3];
         auto selection_idx = (*median_it).index;
 
         std::nth_element(
@@ -200,8 +223,11 @@ TYPED_TEST_P(TestSelectionPolicy, SelectMedian) {
 
         auto expected_median_value = positions_copy[config.mid_index].position[dimension];
         auto expected_selection_idx = positions_copy[config.mid_index].index;
+        auto expected_selection_other_coord =
+            positions_copy[config.mid_index].position[(dimension + 1) % 3];
 
         EXPECT_EQ(median_value, expected_median_value);
+        EXPECT_EQ(selection_other_coord, expected_selection_other_coord);
         EXPECT_EQ(selection_idx, expected_selection_idx)
             << "size = " << config.size << ", beg = " << config.beg_index
             << ", mid = " << config.mid_index << ", end = " << config.end_index;

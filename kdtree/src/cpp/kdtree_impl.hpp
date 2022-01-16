@@ -8,9 +8,9 @@
 #include <ranges>
 #endif
 
+#include "floyd_rivest.hpp"
 #include "kdtree.hpp"
 #include "kdtree_opt.hpp"
-#include "floyd_rivest.hpp"
 #include "tournament_tree.hpp"
 
 namespace wenda {
@@ -19,20 +19,17 @@ namespace kdtree {
 
 namespace detail {
 
-
 struct PositionAtDimensionCompare {
     int dimension;
 
-    template<typename T, typename U>
-    bool operator()(T const &lhs, U const &rhs) const noexcept {
+    template <typename T, typename U> bool operator()(T const &lhs, U const &rhs) const noexcept {
         return lhs.position[dimension] < rhs.position[dimension];
     }
 };
 
 //! Policy making use of the standard library nth_element function for selection
 struct CxxSelectionPolicy {
-    template<typename It>
-    void operator()(It beg, It median, It end, int dimension) const {
+    template <typename It> void operator()(It beg, It median, It end, int dimension) const {
         PositionAtDimensionCompare comp{dimension};
 
 #if defined(__cpp_lib_ranges)
@@ -48,13 +45,11 @@ struct CxxSelectionPolicy {
 
 //! Policy making use of the Floyd-Rivest algorithm for selection
 struct FloydRivestSelectionPolicy {
-    template<typename It>
-    void operator()(It beg, It median, It end, int dimension) const {
+    template <typename It> void operator()(It beg, It median, It end, int dimension) const {
         PositionAtDimensionCompare comp{dimension};
         floyd_rivest_select(beg, median, end, comp);
     }
 };
-
 
 struct MutexLockSynchronization {
     typedef std::mutex mutex_t;
@@ -70,17 +65,21 @@ struct NullSynchonization {
     typedef NullLock lock_t;
 };
 
-template <typename Synchronization = MutexLockSynchronization, typename SelectionPolicy = FloydRivestSelectionPolicy> struct KDTreeBuilder {
+template <
+    typename Synchronization = MutexLockSynchronization,
+    typename SelectionPolicy = FloydRivestSelectionPolicy>
+struct KDTreeBuilder {
     std::vector<KDTree::KDTreeNode> &nodes_;
-    PositionAndIndexArray<3>& positions_;
+    PositionAndIndexArray<3> &positions_;
     size_t leaf_size_;
     size_t block_size_;
     typename Synchronization::mutex_t mutex_;
 
     KDTreeBuilder(
-        std::vector<KDTree::KDTreeNode> &nodes, PositionAndIndexArray<3>& positions,
+        std::vector<KDTree::KDTreeNode> &nodes, PositionAndIndexArray<3> &positions,
         size_t leaf_size, size_t block_size)
-        : nodes_(nodes), positions_(positions), leaf_size_(std::max(leaf_size, 2 * block_size)), block_size_(block_size) {}
+        : nodes_(nodes), positions_(positions), leaf_size_(std::max(leaf_size, 2 * block_size)),
+          block_size_(block_size) {}
 
     void build(int thread_levels) {
         build_node(0, 0, static_cast<uint32_t>(positions_.size()), thread_levels);
@@ -100,7 +99,8 @@ template <typename Synchronization = MutexLockSynchronization, typename Selectio
         median_offset = (median_offset / block_size_) * block_size_;
         auto median_it = positions_.begin() + left + median_offset;
 
-        SelectionPolicy()(positions_.begin() + left, median_it, positions_.begin() + left + count, dimension);
+        SelectionPolicy()(
+            positions_.begin() + left, median_it, positions_.begin() + left + count, dimension);
 
         float split = (*median_it).position[dimension];
 
@@ -118,7 +118,8 @@ template <typename Synchronization = MutexLockSynchronization, typename Selectio
             std::tie(left_idx, right_idx) =
                 build_left_right_threaded(dimension, left, median_offset, count, thread_levels - 1);
         } else {
-            std::tie(left_idx, right_idx) = build_left_right_nonthreaded(dimension, left, median_offset, count);
+            std::tie(left_idx, right_idx) =
+                build_left_right_nonthreaded(dimension, left, median_offset, count);
         }
 
         {
@@ -130,26 +131,28 @@ template <typename Synchronization = MutexLockSynchronization, typename Selectio
         return current_idx;
     }
 
-    std::pair<uint32_t, uint32_t>
-    build_left_right_nonthreaded(int dimension, uint32_t left, uint32_t count_left, uint32_t count_total) {
+    std::pair<uint32_t, uint32_t> build_left_right_nonthreaded(
+        int dimension, uint32_t left, uint32_t count_left, uint32_t count_total) {
         std::pair<uint32_t, uint32_t> result;
 
         result.first = build_node((dimension + 1) % 3, left, count_left, 0);
-        result.second = build_node((dimension + 1) % 3, left + count_left, count_total - count_left, 0);
+        result.second =
+            build_node((dimension + 1) % 3, left + count_left, count_total - count_left, 0);
 
         return result;
     }
 
-    std::pair<uint32_t, uint32_t>
-    build_left_right_threaded(int dimension, uint32_t left, uint32_t count_left, uint32_t count_total, int thread_levels) {
+    std::pair<uint32_t, uint32_t> build_left_right_threaded(
+        int dimension, uint32_t left, uint32_t count_left, uint32_t count_total,
+        int thread_levels) {
         std::pair<uint32_t, uint32_t> result;
 
         std::future<uint32_t> left_future = std::async(std::launch::async, [&]() {
             return build_node((dimension + 1) % 3, left, count_left, thread_levels - 1);
         });
 
-        result.second =
-            build_node((dimension + 1) % 3, left + count_left, count_total - count_left, thread_levels - 1);
+        result.second = build_node(
+            (dimension + 1) % 3, left + count_left, count_total - count_left, thread_levels - 1);
 
         result.first = left_future.get();
         return result;
@@ -166,7 +169,7 @@ struct KDTreeQuery {
     typedef QueueT queue_t;
 
     DistanceT const &distance_;
-    PositionAndIndexArray<3> const& positions_;
+    PositionAndIndexArray<3> const &positions_;
     tcb::span<const KDTree::KDTreeNode> nodes_;
     std::array<float, 3> const &query_;
     QueueT distances_;
@@ -176,7 +179,12 @@ struct KDTreeQuery {
 
     KDTreeQuery(
         KDTree const &tree, DistanceT const &distance, std::array<float, 3> const &query, size_t k)
-        : distance_(distance), positions_(tree.positions()), nodes_(tree.nodes()), query_(query),
+        : KDTreeQuery(tree.nodes(), tree.positions(), distance, query, k) {}
+
+    KDTreeQuery(
+        tcb::span<const KDTree::KDTreeNode> nodes, PositionAndIndexArray<3> const &positions,
+        DistanceT const &distance, std::array<float, 3> const &query, size_t k)
+        : distance_(distance), positions_(positions), nodes_(nodes), query_(query),
           distances_(k, {std::numeric_limits<float>::max(), -1}) {}
 
     void process_leaf(KDTree::KDTreeNode const &node) {
@@ -189,7 +197,7 @@ struct KDTreeQuery {
         num_points_visited += node_positions.size();
     }
 
-    void compute(KDTree::KDTreeNode const* node) {
+    void compute(KDTree::KDTreeNode const *node) {
         return compute(node, distance_.initial_box(query_));
     }
 

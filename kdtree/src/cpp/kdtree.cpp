@@ -93,9 +93,9 @@ KDTree::KDTree(PositionAndIndexArray<3> positions, KDTreeConfiguration const &co
     int max_threads =
         config.max_threads == -1 ? std::thread::hardware_concurrency() : config.max_threads;
 
-    typedef detail::FloydRivestSelectionPolicy SelectionPolicy;
+    typedef detail::FloydRivestAvxSelectionPolicy SelectionPolicy;
 
-    if (max_threads > 1 && positions_.size() >= 2 * num_points_per_thread) {
+    if (false && max_threads > 1 && positions_.size() >= 2 * num_points_per_thread) {
         double num_threads = static_cast<double>(positions_.size()) / num_points_per_thread;
         num_threads = std::max(num_threads, static_cast<double>(max_threads));
 
@@ -118,9 +118,8 @@ std::vector<std::pair<float, uint32_t>> KDTree::find_closest(
     KDTreeQueryStatistics *statistics) const {
 
     typedef std::pair<float, uint32_t> result_t;
-
     detail::KDTreeQuery<Distance, TournamentTree<result_t, PairLessFirst>, InsertShorterDistanceAsm>
-        query(*this, distance, position, k);
+        query(nodes_, positions_, distance, position, k);
     query.compute(&nodes_[0]);
 
     if (statistics) {

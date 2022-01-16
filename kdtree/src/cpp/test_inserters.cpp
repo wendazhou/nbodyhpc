@@ -104,8 +104,6 @@ struct InserterTestConfig {
     unsigned int num_points;
 };
 
-} // namespace
-
 template <typename InserterHolder> class KDTreeRandomTestInserterL2 : public ::testing::Test {
   public:
     typedef std::pair<float, uint32_t> result_t;
@@ -122,6 +120,8 @@ template <typename InserterHolder> class KDTreeRandomTestInserterL2 : public ::t
     std::vector<InserterTestConfig> configs_ = {
         {42, 1, 53}, {43, 4, 79}, {44, 7, 123}, {45, 13, 156}, {46, 17, 179}};
 };
+
+} // namespace
 
 TYPED_TEST_SUITE_P(KDTreeRandomTestInserterL2);
 
