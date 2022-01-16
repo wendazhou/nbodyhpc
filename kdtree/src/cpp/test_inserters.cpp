@@ -112,7 +112,7 @@ template <typename InserterHolder> class KDTreeRandomTestInserterL2 : public ::t
     typedef typename InserterHolder::query_t query_t;
     typedef typename InserterHolder::inserter_t inserter_t;
     typedef typename InserterHolder::distance_t distance_t;
-    distance_t distance_{InserterHolder{}.distance_};
+    distance_t distance_ = InserterHolder().distance_;
 
     // Dummy pointers to access the defined type aliases in test functions through decltype
     query_t *dummy_query_ptr_ = nullptr;

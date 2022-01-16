@@ -134,7 +134,7 @@ partition_vectorized_8(float *arr, ptrdiff_t left, ptrdiff_t right, float pivot,
         int amount_gt_pivot = partition_vec(v, pivot_vec, d);
 
         _mm256_storeu_ps(arr + left, v);
-        data.store(d, right);
+        data.store(d, left);
 
         return left + (8 - amount_gt_pivot);
     }
@@ -320,6 +320,54 @@ void floyd_rivest_select_float_loop(float *array, ptrdiff_t left, ptrdiff_t righ
     }
 }
 
+void floyd_rivest_select_position_index_loop(
+    float *array, ptrdiff_t left, ptrdiff_t right, ptrdiff_t k,
+    PositionAndIndexData<2, float, uint32_t> &data) {
+
+    using std::iter_swap;
+
+    while (right > left) {
+        auto size = right - left;
+
+        if (size > 600) {
+            auto n = right - left + 1;
+            auto i = k - left + 1;
+
+            double z = std::log(n);
+            double s = 0.5 * std::exp(2 * z / 3);
+            double sd = 0.5 * std::sqrt(z * s * (n - s) / n);
+
+            // We alternate choosing left and right pivots
+            if (i < n / 2) {
+                sd *= -1.0;
+            }
+            auto new_left = std::max(left, static_cast<ptrdiff_t>(k - i * s / n + sd));
+            auto new_right = std::min(right, static_cast<ptrdiff_t>(k + (n - i) * s / n + sd));
+            floyd_rivest_select_position_index_loop(array, new_left, new_right, k, data);
+        }
+
+        // Load the chosen pivot element
+        auto t = array[k];
+
+        // Place chosen pivot at end
+        iter_swap(array + right, array + k);
+        data.swap_elements(right, k);
+
+        ptrdiff_t pivot_index = partition_vectorized_8(array, left, right, t, data);
+
+        iter_swap(array + pivot_index, array + right);
+        data.swap_elements(pivot_index, right);
+
+        // Recurse into sub-partition
+        if (pivot_index <= k) {
+            left = pivot_index + 1;
+        }
+        if (k <= pivot_index) {
+            right = pivot_index - 1;
+        }
+    }
+}
+
 } // namespace
 
 namespace wenda {
@@ -441,8 +489,10 @@ void floyd_rivest_select_loop_position_array_avx2(
         }
     }
 
-    PositionAndIndexData<2, float, uint32_t> data{dimension, positions_not_dimension, array.indices_.data()};
-    partition_vectorized_8(array.positions_[dimension], left, right, k, data);
+    PositionAndIndexData<2, float, uint32_t> data{
+        dimension, positions_not_dimension, array.indices_.data()};
+
+    floyd_rivest_select_position_index_loop(array.positions_[dimension], left, right, k, data);
 }
 
 void floyd_rivest_select_loop_position_array(
@@ -451,8 +501,8 @@ void floyd_rivest_select_loop_position_array(
 
     auto &positions = array.positions_;
 
-    auto comp = [&, dimension](ptrdiff_t left, ptrdiff_t right) {
-        return positions[dimension][left] < positions[dimension][right];
+    auto comp = [&, dimension](ptrdiff_t l, ptrdiff_t r) {
+        return positions[dimension][l] < positions[dimension][r];
     };
 
     while (right > left) {
