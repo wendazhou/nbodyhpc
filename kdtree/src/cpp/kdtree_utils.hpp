@@ -28,25 +28,38 @@ make_random_position_and_index(uint32_t n, unsigned int seed, float boxsize = 1.
         c.v[1] = i;
         auto r = rng(c, uk);
 
-        for(size_t dim = 0; dim < 3; ++dim) {
+        for (size_t dim = 0; dim < 3; ++dim) {
             c.v[0] = dim;
             auto r = rng(c, uk);
             positions[i].position[dim] = r123::u01<float>(r[0]) * boxsize;
         }
 
-        //positions[i].position[0] = r123::u01<float>(r[0]) * boxsize;
-        //positions[i].position[1] = r123::u01<float>(r[1]) * boxsize;
-        //positions[i].position[2] = r123::u01<float>(r[2]) * boxsize;
         positions[i].index = i;
     }
 
     return positions;
 }
 
+/** Generates a PositionAndIndexArray with random positions.
+ *
+ * @param n Number of elements in the array.
+ * @param seed Seed for the random number generator.
+ * @param boxsize Size of the box in each dimension.
+ * @param block_size If positive, pads the array to a multiple of the given block size.
+ *
+ */
 template <size_t R = 3, typename T = float, typename IndexT = uint32_t>
-inline PositionAndIndexArray<R, T, IndexT>
-make_random_position_and_index_array(uint32_t n, unsigned int seed, float boxsize = 1.0) {
-    PositionAndIndexArray<R, T, IndexT> result(n);
+inline PositionAndIndexArray<R, T, IndexT> make_random_position_and_index_array(
+    uint32_t n, unsigned int seed, float boxsize = 1.0, int block_size = -1) {
+
+    uint32_t size_up;
+    if (block_size <= 0) {
+        size_up = n;
+    } else {
+        size_up = (n + block_size - 1) / block_size * block_size;
+    }
+
+    PositionAndIndexArray<R, T, IndexT> result(size_up);
 
     typedef r123::Philox4x32 RNG;
     RNG rng;
@@ -63,6 +76,10 @@ make_random_position_and_index_array(uint32_t n, unsigned int seed, float boxsiz
             auto r = rng(c, uk);
 
             result.positions_[dim][i] = r123::u01<T>(r[0]) * boxsize;
+        }
+
+        for (uint32_t i = n; i < size_up; ++i) {
+            result.positions_[dim][i] = std::numeric_limits<T>::max();
         }
     }
 
@@ -92,10 +109,11 @@ typename ContainerAdapter::container_type &get_container_from_adapter(ContainerA
 /** Utility function to make an array of position and indices from the given positions.
  *
  * @param positions The positions to convert.
+ * @param block_size If positive, pads the array to a multiple of the given block size.
  *
  */
-std::vector<PositionAndIndex>
-make_position_and_indices(tcb::span<const std::array<float, 3>> const &positions);
+PositionAndIndexArray<3, float, uint32_t>
+make_position_and_indices(tcb::span<const std::array<float, 3>> const &positions, int block_size = -1);
 
 } // namespace kdtree
 } // namespace wenda

@@ -297,7 +297,7 @@ struct PositionAndIndexArray {
     PositionAndIndexArray() = default;
     PositionAndIndexArray(PositionAndIndexArray const &other) : indices_(other.indices_) {
         for (size_t i = 0; i < R; ++i) {
-            positions_[i] = aligned_alloc(64, sizeof(T) * indices_.size());
+            positions_[i] = static_cast<T*>(aligned_alloc(64, sizeof(T) * indices_.size()));
             std::copy(other.positions_[i], other.positions_[i] + indices_.size(), positions_[i]);
         }
     }
@@ -494,14 +494,10 @@ class KDTree {
      * This constructor makes use of a pre-allocated positions vector.
      * To build from an array of positions, see other constructor.
      *
-     * @param positions_and_indices The positions and indices to build the tree from.
+     * @param positions The positions and indices to build the tree from.
      * @param config Configuration to use when building the tree.
      *
      */
-    KDTree(
-        std::vector<PositionAndIndex> &&positions_and_indices,
-        KDTreeConfiguration const &config = {});
-
     KDTree(PositionAndIndexArray<3> positions, KDTreeConfiguration const &config = {});
 
     KDTree(KDTree &&) noexcept = default;

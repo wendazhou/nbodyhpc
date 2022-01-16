@@ -42,20 +42,36 @@ namespace wenda {
 
 namespace kdtree {
 
-std::vector<PositionAndIndex>
-make_position_and_indices(tcb::span<const std::array<float, 3>> const &positions) {
-    std::vector<PositionAndIndex> result(positions.size());
+PositionAndIndexArray<3, float, uint32_t>
+make_position_and_indices(tcb::span<const std::array<float, 3>> const &positions, int block_size) {
+    size_t size_up;
 
-    for (size_t i = 0; i < positions.size(); ++i) {
-        result[i].position = positions[i];
-        result[i].index = i;
+    if (block_size <= 0) {
+        size_up = positions.size();
+    } else {
+        size_up = (positions.size() + block_size - 1) / block_size * block_size;
+    }
+
+    PositionAndIndexArray<3, float, uint32_t> result(size_up);
+    std::iota(result.indices_.begin(), result.indices_.end(), 0);
+
+    for (size_t dim = 0; dim < 3; ++dim) {
+        std::transform(
+            positions.begin(), positions.end(), result.positions_[dim], [dim](auto const &pos) {
+                return pos[dim];
+            });
+
+        std::fill(
+            result.positions_[dim] + positions.size(),
+            result.positions_[dim] + size_up,
+            std::numeric_limits<float>::max());
     }
 
     return result;
 }
 
 KDTree::KDTree(tcb::span<const std::array<float, 3>> positions, KDTreeConfiguration const &config)
-    : KDTree(make_position_and_indices(positions), config) {}
+    : KDTree(make_position_and_indices(positions, config.block_size), config) {}
 
 KDTree::KDTree(PositionAndIndexArray<3> positions, KDTreeConfiguration const &config)
     : positions_(std::move(positions)) {
@@ -84,13 +100,6 @@ KDTree::KDTree(PositionAndIndexArray<3> positions, KDTreeConfiguration const &co
         builder.build(0);
     }
 }
-
-KDTree::KDTree(
-    std::vector<PositionAndIndex> &&positions_and_indices, KDTreeConfiguration const &config)
-    : KDTree(
-          PositionAndIndexArray(
-              resize_to_following_multiple(std::move(positions_and_indices), config.block_size)),
-          config) {}
 
 template <typename Distance>
 std::vector<std::pair<float, uint32_t>> KDTree::find_closest(

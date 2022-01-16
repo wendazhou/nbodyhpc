@@ -120,7 +120,7 @@ template <typename InserterHolder> class KDTreeRandomTestInserterL2 : public ::t
     inserter_t *dummy_inserter_ptr_ = nullptr;
 
     std::vector<InserterTestConfig> configs_ = {
-        {42, 1, 64}, {43, 4, 128}, {44, 7, 128}, {45, 13, 136}, {46, 17, 256}};
+        {42, 1, 53}, {43, 4, 79}, {44, 7, 123}, {45, 13, 156}, {46, 17, 179}};
 };
 
 TYPED_TEST_SUITE_P(KDTreeRandomTestInserterL2);
@@ -129,12 +129,14 @@ TYPED_TEST_P(KDTreeRandomTestInserterL2, BuildAndFindNearest) {
     typedef std::remove_pointer_t<decltype(this->dummy_query_ptr_)> query_t;
     typedef std::remove_pointer_t<decltype(this->dummy_result_ptr_)> result_t;
 
+    kdt::KDTreeConfiguration tree_config{};
+
     for (auto const &config : this->configs_) {
-        auto positions = wenda::kdtree::make_random_position_and_index(
-            4 * config.num_points + config.seed, config.seed);
+        auto positions = wenda::kdtree::make_random_position_and_index_array(
+            4 * config.num_points + config.seed, config.seed, 1.0, tree_config.block_size);
         std::array<float, 3> query_pos = {0.4, 0.5, 0.6};
 
-        auto tree = wenda::kdtree::KDTree(std::vector(positions), {.leaf_size = 64});
+        auto tree = wenda::kdtree::KDTree(positions, tree_config);
         query_t query{tree, this->distance_, query_pos, config.num_neighbors};
         query.compute(tree.nodes().data());
 
@@ -158,8 +160,8 @@ TYPED_TEST_P(KDTreeRandomTestInserterL2, FindNearestFlat) {
     typedef std::remove_pointer_t<decltype(this->dummy_inserter_ptr_)> inserter_t;
 
     for (auto const &config : this->configs_) {
-        auto positions =
-            wenda::kdtree::make_random_position_and_index(config.num_points, config.seed);
+        auto positions = wenda::kdtree::make_random_position_and_index_array(
+            config.num_points, config.seed, 1.0, 8);
         auto queries = wenda::kdtree::make_random_position_and_index(4, 2 * config.seed);
 
         for (auto const &query_and_idx : queries) {
@@ -180,10 +182,12 @@ TYPED_TEST_P(KDTreeRandomTestInserterL2, ExhaustiveLeaves) {
     typedef std::remove_pointer_t<decltype(this->dummy_result_ptr_)> result_t;
     typedef std::remove_pointer_t<decltype(this->dummy_inserter_ptr_)> inserter_t;
 
-    auto positions = wenda::kdtree::make_random_position_and_index(64, 42);
+    kdt::KDTreeConfiguration tree_config{.leaf_size = 16};
+    auto positions =
+        wenda::kdtree::make_random_position_and_index_array(64, 42, 1.0, tree_config.block_size);
     std::array<float, 3> query_pos = {0.4, 0.5, 0.6};
 
-    auto tree = wenda::kdtree::KDTree(std::vector(positions), {.leaf_size = 16});
+    auto tree = wenda::kdtree::KDTree(positions, tree_config);
 
     for (int num_points : {1, 4, 7}) {
         for (auto const &node : tree.nodes()) {
