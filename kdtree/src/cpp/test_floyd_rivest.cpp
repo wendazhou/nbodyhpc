@@ -36,14 +36,6 @@ template <typename It> void fill_random_integers(It beg, It end, uint32_t seed) 
     fill_random(beg, end, seed, [](auto r) { return r[0]; });
 }
 
-struct LessInDimension {
-    int dimension_;
-
-    template <typename T> bool operator()(T const &lhs, T const &rhs) const {
-        return lhs.position[dimension_] < rhs.position[dimension_];
-    }
-};
-
 } // namespace
 
 TEST(FloydRivestTest, TestFloydRivestMedianInt) {
@@ -69,7 +61,10 @@ TEST(FloydRivestTest, TestFloydRivestMedianPositionAndIndex) {
     auto median_it = positions.begin() + positions.size() / 2;
 
     wenda::kdtree::floyd_rivest_select(
-        positions.begin(), median_it, positions.end(), LessInDimension{0});
+        positions.begin(),
+        median_it,
+        positions.end(),
+        wenda::kdtree::detail::PositionAtDimensionCompare{0});
 
     auto fr_median_value = (*median_it).position[0];
 
@@ -154,9 +149,25 @@ TEST(SelectionTest, TestFloatArrayFloydRivest) {
 
 namespace {
 
+struct SelectionTestConfiguration {
+    size_t size;
+    size_t beg_index;
+    size_t mid_index;
+    size_t end_index;
+};
+
 template <typename SelectionPolicy> class TestSelectionPolicy : public ::testing::Test {
   public:
     SelectionPolicy selection_;
+
+    std::vector<SelectionTestConfiguration> configs_ = {
+        {10, 0, 4, 10},
+        {10, 2, 6, 7},
+        {50, 0, 25, 50},
+        {50, 14, 17, 20},
+        {1000, 0, 500, 1000},
+        {1000, 400, 450, 475},
+    };
 };
 
 } // namespace
@@ -164,37 +175,43 @@ template <typename SelectionPolicy> class TestSelectionPolicy : public ::testing
 TYPED_TEST_SUITE_P(TestSelectionPolicy);
 
 TYPED_TEST_P(TestSelectionPolicy, SelectMedian) {
-    for(int i = 0; i < 10; ++i) {
-        auto positions = wenda::kdtree::make_random_position_and_index_array(1000, 42);
-        int dimension = 0;
+    uint32_t i = 0;
 
-        size_t beg_idx = i * 4;
-        size_t end_idx = positions.size() - i * 3;
-        size_t median_idx = positions.size() / 2 - i * 2;
+    for (auto const &config : this->configs_) {
+        auto positions = wenda::kdtree::make_random_position_and_index_array(config.size, 42);
+        auto positions_copy = wenda::kdtree::PositionAndIndexArray(positions);
 
-        auto beg_it = positions.begin() + beg_idx;
-        auto end_it = positions.begin() + end_idx;
+        int dimension = i % 3;
 
-        auto median_it = positions.begin() + median_idx;
+        auto beg_it = positions.begin() + config.beg_index;
+        auto end_it = positions.begin() + config.end_index;
+
+        auto median_it = positions.begin() + config.mid_index;
         this->selection_(beg_it, median_it, end_it, dimension);
 
         auto median_value = (*median_it).position[dimension];
+        auto selection_idx = (*median_it).index;
 
         std::nth_element(
-            positions.positions_[dimension] + beg_idx,
-            positions.positions_[dimension] + median_idx,
-            positions.positions_[dimension] + end_idx);
+            positions_copy.begin() + config.beg_index,
+            positions_copy.begin() + config.mid_index,
+            positions_copy.begin() + config.end_index,
+            wenda::kdtree::detail::PositionAtDimensionCompare{dimension});
 
-        auto expected_median_value = positions.positions_[dimension][median_idx];
+        auto expected_median_value = positions_copy[config.mid_index].position[dimension];
+        auto expected_selection_idx = positions_copy[config.mid_index].index;
 
-        EXPECT_EQ(median_value, expected_median_value) << "i = " << i;
+        EXPECT_EQ(median_value, expected_median_value);
+        EXPECT_EQ(selection_idx, expected_selection_idx)
+            << "size = " << config.size << ", beg = " << config.beg_index
+            << ", mid = " << config.mid_index << ", end = " << config.end_index;
     }
 }
 
 REGISTER_TYPED_TEST_SUITE_P(TestSelectionPolicy, SelectMedian);
 
 typedef ::testing::Types<
-    wenda::kdtree::detail::FloydRivestSelectionPolicy,
+    wenda::kdtree::detail::CxxSelectionPolicy, wenda::kdtree::detail::FloydRivestSelectionPolicy,
     wenda::kdtree::detail::FloydRivestOptSelectionPolicy,
     wenda::kdtree::detail::FloydRivestAvxSelectionPolicy>
     SelectionPolicies;

@@ -14,6 +14,7 @@
 #include <shared_mutex>
 #include <vector>
 
+#include "kdtree_build_opt.hpp"
 #include "kdtree_impl.hpp"
 #include "kdtree_opt.hpp"
 #include "kdtree_opt_asm.hpp"
@@ -80,9 +81,19 @@ KDTree::KDTree(PositionAndIndexArray<3> positions, KDTreeConfiguration const &co
         throw std::runtime_error("More than uint32_t points are not supported.");
     }
 
+    if (config.block_size % 8 != 0) {
+        throw std::runtime_error("block_size must be a multiple of 8.");
+    }
+
+    if (positions_.size() % config.block_size != 0) {
+        throw std::runtime_error("block_size must divide the number of points.");
+    }
+
     const size_t num_points_per_thread = 5000000;
     int max_threads =
         config.max_threads == -1 ? std::thread::hardware_concurrency() : config.max_threads;
+
+    typedef detail::FloydRivestSelectionPolicy SelectionPolicy;
 
     if (max_threads > 1 && positions_.size() >= 2 * num_points_per_thread) {
         double num_threads = static_cast<double>(positions_.size()) / num_points_per_thread;
@@ -91,11 +102,11 @@ KDTree::KDTree(PositionAndIndexArray<3> positions, KDTreeConfiguration const &co
         int log2_threads = static_cast<int>(std::log2(num_threads));
 
         typedef detail::MutexLockSynchronization Synchronization;
-        detail::KDTreeBuilder<Synchronization> builder(
+        detail::KDTreeBuilder<Synchronization, SelectionPolicy> builder(
             nodes_, positions_, config.leaf_size, config.block_size);
         builder.build(log2_threads);
     } else {
-        detail::KDTreeBuilder<detail::NullSynchonization> builder(
+        detail::KDTreeBuilder<detail::NullSynchonization, SelectionPolicy> builder(
             nodes_, positions_, config.leaf_size, config.block_size);
         builder.build(0);
     }
