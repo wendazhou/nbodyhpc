@@ -38,32 +38,71 @@ std::vector<std::pair<float, uint32_t>> find_nearest_naive(
     return result;
 }
 
+template <typename Inserter, typename DistanceT, typename ContainerT>
+std::vector<std::pair<float, uint32_t>> find_nearest_inserter(
+    ContainerT const &positions, std::array<float, 3> const &query, int k,
+    DistanceT const &distance) {
+
+    typedef kdt::TournamentTree<std::pair<float, uint32_t>, kdt::PairLessFirst> QueueT;
+
+    QueueT queue(k, {std::numeric_limits<float>::max(), -1});
+
+    Inserter inserter;
+    auto positions_soa = kdt::PositionAndIndexArray(positions);
+
+    inserter(positions_soa, query, queue, distance);
+
+    std::vector<std::pair<float, uint32_t>> result(k);
+    queue.copy_values(result.begin());
+    std::sort(result.begin(), result.end());
+
+    for (auto &p : result) {
+        p.first = distance.postprocess(p.first);
+    }
+
+    return result;
+}
+
 template <template <typename, typename> typename Inserter> struct InserterL2Holder {
     typedef std::pair<float, uint32_t> result_t;
     typedef kdt::detail::KDTreeQuery<
         kdt::L2Distance, kdt::TournamentTree<result_t, kdt::PairLessFirst>, Inserter>
         query_t;
     typedef Inserter<kdt::L2Distance, kdt::TournamentTree<result_t, kdt::PairLessFirst>> inserter_t;
-};
 
-using InsertersL2 = ::testing::Types<
-    InserterL2Holder<kdt::InsertShorterDistanceVanilla>,
-    InserterL2Holder<kdt::InsertShorterDistanceUnrolled4>,
-    InserterL2Holder<kdt::InsertShorterDistanceAVX>,
-    InserterL2Holder<kdt::InsertShorterDistanceAsm>>;
+    typedef kdt::L2Distance distance_t;
+
+    const distance_t distance_;
+};
 
 template <template <typename, typename> typename Inserter> struct InserterL2PeriodicHolder {
     typedef std::pair<float, uint32_t> result_t;
     typedef kdt::detail::KDTreeQuery<
         kdt::L2PeriodicDistance<float>, kdt::TournamentTree<result_t, kdt::PairLessFirst>, Inserter>
         query_t;
+    typedef Inserter<
+        kdt::L2PeriodicDistance<float>, kdt::TournamentTree<result_t, kdt::PairLessFirst>>
+        inserter_t;
+
+    typedef kdt::L2PeriodicDistance<float> distance_t;
+    const distance_t distance_{2.0f};
 };
 
-using InsertersL2Periodic = ::testing::Types<
+using Inserters = ::testing::Types<
+    InserterL2Holder<kdt::InsertShorterDistanceVanilla>,
+    InserterL2Holder<kdt::InsertShorterDistanceUnrolled4>,
+    InserterL2Holder<kdt::InsertShorterDistanceAVX>,
+    InserterL2Holder<kdt::InsertShorterDistanceAsm>,
     InserterL2PeriodicHolder<kdt::InsertShorterDistanceVanilla>,
     InserterL2PeriodicHolder<kdt::InsertShorterDistanceUnrolled4>,
     InserterL2PeriodicHolder<kdt::InsertShorterDistanceAVX>,
     InserterL2PeriodicHolder<kdt::InsertShorterDistanceAsm>>;
+
+struct InserterTestConfig {
+    unsigned int seed;
+    unsigned int num_neighbors;
+    unsigned int num_points;
+};
 
 } // namespace
 
@@ -72,12 +111,16 @@ template <typename InserterHolder> class KDTreeRandomTestInserterL2 : public ::t
     typedef std::pair<float, uint32_t> result_t;
     typedef typename InserterHolder::query_t query_t;
     typedef typename InserterHolder::inserter_t inserter_t;
-    kdt::L2Distance distance_;
+    typedef typename InserterHolder::distance_t distance_t;
+    distance_t distance_{InserterHolder{}.distance_};
 
     // Dummy pointers to access the defined type aliases in test functions through decltype
     query_t *dummy_query_ptr_ = nullptr;
     result_t *dummy_result_ptr_ = nullptr;
     inserter_t *dummy_inserter_ptr_ = nullptr;
+
+    std::vector<InserterTestConfig> configs_ = {
+        {42, 1, 64}, {43, 4, 128}, {44, 7, 128}, {45, 13, 136}, {46, 17, 256}};
 };
 
 TYPED_TEST_SUITE_P(KDTreeRandomTestInserterL2);
@@ -86,25 +129,51 @@ TYPED_TEST_P(KDTreeRandomTestInserterL2, BuildAndFindNearest) {
     typedef std::remove_pointer_t<decltype(this->dummy_query_ptr_)> query_t;
     typedef std::remove_pointer_t<decltype(this->dummy_result_ptr_)> result_t;
 
-    uint32_t num_points = 1;
+    for (auto const &config : this->configs_) {
+        auto positions = wenda::kdtree::make_random_position_and_index(
+            4 * config.num_points + config.seed, config.seed);
+        std::array<float, 3> query_pos = {0.4, 0.5, 0.6};
 
-    auto positions = wenda::kdtree::make_random_position_and_index(10000, 42);
-    std::array<float, 3> query_pos = {0.4, 0.5, 0.6};
+        auto tree = wenda::kdtree::KDTree(std::vector(positions), {.leaf_size = 64});
+        query_t query{tree, this->distance_, query_pos, config.num_neighbors};
+        query.compute(tree.nodes().data());
 
-    auto tree = wenda::kdtree::KDTree(std::vector(positions), {.leaf_size = 64});
-    query_t query{tree, this->distance_, query_pos, num_points};
-    query.compute(tree.nodes().data());
+        std::vector<result_t> result(config.num_neighbors);
+        query.distances_.copy_values(result.data());
+        std::sort(result.begin(), result.end());
+        for (auto &p : result) {
+            p.first = this->distance_.postprocess(p.first);
+        }
 
-    std::vector<result_t> result(num_points);
-    query.distances_.copy_values(result.data());
-    std::sort(result.begin(), result.end());
-    for (auto &p : result) {
-        p.first = this->distance_.postprocess(p.first);
+        auto naive_result =
+            find_nearest_naive(positions, query_pos, config.num_neighbors, this->distance_);
+
+        EXPECT_EQ(result, naive_result)
+            << "seed: " << config.seed << " num_points: " << config.num_points
+            << " num_neighbors: " << config.num_neighbors;
     }
+}
 
-    auto naive_result = find_nearest_naive(positions, query_pos, num_points, this->distance_);
+TYPED_TEST_P(KDTreeRandomTestInserterL2, FindNearestFlat) {
+    typedef std::remove_pointer_t<decltype(this->dummy_inserter_ptr_)> inserter_t;
 
-    ASSERT_EQ(result, naive_result);
+    for (auto const &config : this->configs_) {
+        auto positions =
+            wenda::kdtree::make_random_position_and_index(config.num_points, config.seed);
+        auto queries = wenda::kdtree::make_random_position_and_index(4, 2 * config.seed);
+
+        for (auto const &query_and_idx : queries) {
+            auto const &query = query_and_idx.position;
+            auto result_naive =
+                find_nearest_naive(positions, query, config.num_neighbors, this->distance_);
+            auto result = find_nearest_inserter<inserter_t>(
+                positions, query, config.num_neighbors, this->distance_);
+
+            EXPECT_EQ(result_naive, result)
+                << "seed: " << config.seed << ", num_points: " << config.num_points
+                << ", num_neighbors: " << config.num_neighbors;
+        }
+    }
 }
 
 TYPED_TEST_P(KDTreeRandomTestInserterL2, ExhaustiveLeaves) {
@@ -140,57 +209,12 @@ TYPED_TEST_P(KDTreeRandomTestInserterL2, ExhaustiveLeaves) {
             auto result_naive = find_nearest_naive(span, query_pos, num_points, this->distance_);
 
             EXPECT_EQ(result, result_naive)
-                << "Error with num_points: " << num_points << "at node: (" << node.left_ << ", "
+                << "Error with num_points: " << num_points << " at node: (" << node.left_ << ", "
                 << node.right_ << ")";
         }
     }
 }
 
-REGISTER_TYPED_TEST_SUITE_P(KDTreeRandomTestInserterL2, BuildAndFindNearest, ExhaustiveLeaves);
-INSTANTIATE_TYPED_TEST_SUITE_P(TestInserterL2, KDTreeRandomTestInserterL2, InsertersL2);
-
-template <typename InserterHolder>
-class KDTreeRandomTestInserterL2Periodic : public ::testing::Test {
-  public:
-    typedef std::pair<float, uint32_t> result_t;
-    typedef typename InserterHolder::query_t query_t;
-    kdt::L2PeriodicDistance<float> distance_ = {2.0f};
-
-    // Dummy pointers to access the defined type aliases in test functions through decltype
-    query_t *dummy_query_ptr_ = nullptr;
-    result_t *dummy_result_ptr_ = nullptr;
-
-    std::vector<int> seeds_ = {42, 43, 44, 45, 46, 47, 48, 49};
-};
-TYPED_TEST_SUITE_P(KDTreeRandomTestInserterL2Periodic);
-
-TYPED_TEST_P(KDTreeRandomTestInserterL2Periodic, BuildAndFindNearest) {
-    typedef std::remove_pointer_t<decltype(this->dummy_query_ptr_)> query_t;
-    typedef std::remove_pointer_t<decltype(this->dummy_result_ptr_)> result_t;
-
-    uint32_t num_points = 17;
-
-    for (auto seed : this->seeds_) {
-        auto positions =
-            wenda::kdtree::make_random_position_and_index(100, 42, this->distance_.box_size_);
-        std::array<float, 3> query_pos = {0.4, 0.5, 0.6};
-
-        auto tree = wenda::kdtree::KDTree(std::vector(positions), {.leaf_size = 64});
-        query_t query{tree, this->distance_, query_pos, num_points};
-        query.compute(tree.nodes().data());
-
-        std::vector<result_t> result(num_points);
-        query.distances_.copy_values(result.data());
-        std::sort(result.begin(), result.end());
-        for (auto &p : result) {
-            p.first = this->distance_.postprocess(p.first);
-        }
-
-        auto naive_result = find_nearest_naive(positions, query_pos, num_points, this->distance_);
-
-        ASSERT_EQ(result, naive_result);
-    }
-}
-REGISTER_TYPED_TEST_SUITE_P(KDTreeRandomTestInserterL2Periodic, BuildAndFindNearest);
-INSTANTIATE_TYPED_TEST_SUITE_P(
-    TestInserterL2Periodic, KDTreeRandomTestInserterL2Periodic, InsertersL2Periodic);
+REGISTER_TYPED_TEST_SUITE_P(
+    KDTreeRandomTestInserterL2, BuildAndFindNearest, ExhaustiveLeaves, FindNearestFlat);
+INSTANTIATE_TYPED_TEST_SUITE_P(TestInserter, KDTreeRandomTestInserterL2, Inserters);
