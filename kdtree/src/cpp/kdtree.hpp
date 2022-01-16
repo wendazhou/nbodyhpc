@@ -295,7 +295,13 @@ struct PositionAndIndexArray {
     std::vector<IndexT> indices_;
 
     PositionAndIndexArray() = default;
-    PositionAndIndexArray(PositionAndIndexArray const &) = delete;
+    PositionAndIndexArray(PositionAndIndexArray const &other) : indices_(other.indices_) {
+        for (size_t i = 0; i < R; ++i) {
+            positions_[i] = aligned_alloc(64, sizeof(T) * indices_.size());
+            std::copy(other.positions_[i], other.positions_[i] + indices_.size(), positions_[i]);
+        }
+    }
+
     PositionAndIndexArray(PositionAndIndexArray &&other) noexcept
         : positions_(std::move(other.positions_)), indices_(std::move(other.indices_)) {
         std::fill(other.positions_.begin(), other.positions_.end(), nullptr);
@@ -435,7 +441,7 @@ void iter_swap(
 
 template <size_t R, typename T, typename IndexT>
 PositionAndIndex iter_move(PositionAndIndexIterator<R, T, IndexT> const &it) {
-    return (*const_cast<const PositionAndIndexArray<R, T, IndexT>*>(it.array_))[it.offset_];
+    return (*const_cast<const PositionAndIndexArray<R, T, IndexT> *>(it.array_))[it.offset_];
 }
 
 template <size_t R, typename T, typename IndexT>
@@ -495,6 +501,8 @@ class KDTree {
     KDTree(
         std::vector<PositionAndIndex> &&positions_and_indices,
         KDTreeConfiguration const &config = {});
+
+    KDTree(PositionAndIndexArray<3> positions, KDTreeConfiguration const &config = {});
 
     KDTree(KDTree &&) noexcept = default;
 

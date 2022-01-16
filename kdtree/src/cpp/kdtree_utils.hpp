@@ -25,12 +25,18 @@ make_random_position_and_index(uint32_t n, unsigned int seed, float boxsize = 1.
     uk[0] = seed;
 
     for (uint32_t i = 0; i < n; ++i) {
-        c.v[0] = i;
+        c.v[1] = i;
         auto r = rng(c, uk);
 
-        positions[i].position[0] = r123::u01<float>(r[0]) * boxsize;
-        positions[i].position[1] = r123::u01<float>(r[1]) * boxsize;
-        positions[i].position[2] = r123::u01<float>(r[2]) * boxsize;
+        for(size_t dim = 0; dim < 3; ++dim) {
+            c.v[0] = dim;
+            auto r = rng(c, uk);
+            positions[i].position[dim] = r123::u01<float>(r[0]) * boxsize;
+        }
+
+        //positions[i].position[0] = r123::u01<float>(r[0]) * boxsize;
+        //positions[i].position[1] = r123::u01<float>(r[1]) * boxsize;
+        //positions[i].position[2] = r123::u01<float>(r[2]) * boxsize;
         positions[i].index = i;
     }
 

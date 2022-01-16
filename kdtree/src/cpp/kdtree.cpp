@@ -21,6 +21,23 @@
 #include "tournament_tree.hpp"
 #include <span.hpp>
 
+namespace {
+std::vector<wenda::kdtree::PositionAndIndex> resize_to_following_multiple(
+    std::vector<wenda::kdtree::PositionAndIndex> &&positions, size_t block_size) {
+
+    auto size_up = (positions.size() + block_size - 1) / block_size * block_size;
+    positions.resize(
+        size_up,
+        wenda::kdtree::PositionAndIndex{
+            {std::numeric_limits<float>::max(),
+             std::numeric_limits<float>::max(),
+             std::numeric_limits<float>::max()},
+            -1u});
+
+    return std::move(positions);
+}
+} // namespace
+
 namespace wenda {
 
 namespace kdtree {
@@ -40,11 +57,10 @@ make_position_and_indices(tcb::span<const std::array<float, 3>> const &positions
 KDTree::KDTree(tcb::span<const std::array<float, 3>> positions, KDTreeConfiguration const &config)
     : KDTree(make_position_and_indices(positions), config) {}
 
-KDTree::KDTree(
-    std::vector<PositionAndIndex> &&positions_and_indices, KDTreeConfiguration const &config)
-    : positions_() {
+KDTree::KDTree(PositionAndIndexArray<3> positions, KDTreeConfiguration const &config)
+    : positions_(std::move(positions)) {
 
-    if (positions_and_indices.size() > static_cast<size_t>(std::numeric_limits<uint32_t>::max())) {
+    if (positions_.size() > static_cast<size_t>(std::numeric_limits<uint32_t>::max())) {
         throw std::runtime_error("More than uint32_t points are not supported.");
     }
 
@@ -52,19 +68,7 @@ KDTree::KDTree(
     int max_threads =
         config.max_threads == -1 ? std::thread::hardware_concurrency() : config.max_threads;
 
-    auto size_up = (positions_and_indices.size() + config.block_size - 1) / config.block_size *
-                   config.block_size;
-    positions_and_indices.resize(
-        size_up,
-        PositionAndIndex{
-            {std::numeric_limits<float>::max(),
-             std::numeric_limits<float>::max(),
-             std::numeric_limits<float>::max()},
-            -1u});
-
-    positions_ = PositionAndIndexArray(std::move(positions_and_indices));
-
-    if (max_threads > 1 && positions_and_indices.size() >= 2 * num_points_per_thread) {
+    if (max_threads > 1 && positions_.size() >= 2 * num_points_per_thread) {
         double num_threads = static_cast<double>(positions_.size()) / num_points_per_thread;
         num_threads = std::max(num_threads, static_cast<double>(max_threads));
 
@@ -81,6 +85,13 @@ KDTree::KDTree(
     }
 }
 
+KDTree::KDTree(
+    std::vector<PositionAndIndex> &&positions_and_indices, KDTreeConfiguration const &config)
+    : KDTree(
+          PositionAndIndexArray(
+              resize_to_following_multiple(std::move(positions_and_indices), config.block_size)),
+          config) {}
+
 template <typename Distance>
 std::vector<std::pair<float, uint32_t>> KDTree::find_closest(
     std::array<float, 3> const &position, size_t k, Distance const &distance,
@@ -88,9 +99,8 @@ std::vector<std::pair<float, uint32_t>> KDTree::find_closest(
 
     typedef std::pair<float, uint32_t> result_t;
 
-    detail::
-        KDTreeQuery<Distance, TournamentTree<result_t, PairLessFirst>, InsertShorterDistanceAsm>
-            query(*this, distance, position, k);
+    detail::KDTreeQuery<Distance, TournamentTree<result_t, PairLessFirst>, InsertShorterDistanceAsm>
+        query(*this, distance, position, k);
     query.compute(&nodes_[0]);
 
     if (statistics) {
