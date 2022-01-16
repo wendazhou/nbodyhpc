@@ -72,7 +72,7 @@ template <template <typename, typename> typename Inserter> struct InserterL2Hold
 
     typedef kdt::L2Distance distance_t;
 
-    const distance_t distance_;
+    distance_t distance_;
 };
 
 template <template <typename, typename> typename Inserter> struct InserterL2PeriodicHolder {
@@ -85,7 +85,7 @@ template <template <typename, typename> typename Inserter> struct InserterL2Peri
         inserter_t;
 
     typedef kdt::L2PeriodicDistance<float> distance_t;
-    const distance_t distance_{2.0f};
+    distance_t distance_{2.0f};
 };
 
 using Inserters = ::testing::Types<
