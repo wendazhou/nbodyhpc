@@ -60,7 +60,7 @@ set(KDTREE_ASM_SOURCES src/cpp/kdtree_asm_systemv.asm)
 endif()
 
 add_library(kdtree_asm OBJECT ${KDTREE_ASM_SOURCES})
-add_library(kdtree STATIC src/cpp/kdtree.cpp)
+add_library(kdtree STATIC src/cpp/kdtree.cpp src/cpp/kdtree_selection.cpp)
 target_link_libraries(kdtree PRIVATE Threads::Threads kdtree_asm)
 target_compile_options(kdtree PUBLIC $<$<AND:$<CONFIG:DEBUG>,$<COMPILE_LANGUAGE:C,CXX>>:-fsanitize=address>)
 target_link_options(kdtree PUBLIC $<$<CONFIG:DEBUG>:-fsanitize=address>)
@@ -90,7 +90,7 @@ pybind11_add_module(_impl src/cpp/pybind.cpp)
 target_link_libraries(_impl PRIVATE kdtree)
 
 if(BUILD_TESTING)
-    add_executable(kdtree_test src/cpp/test.cpp src/cpp/test_opt.cpp src/cpp/test_asm.cpp src/cpp/test_inserters.cpp)
+    add_executable(kdtree_test src/cpp/test.cpp src/cpp/test_opt.cpp src/cpp/test_asm.cpp src/cpp/test_inserters.cpp src/cpp/test_floyd_rivest.cpp src/cpp/test_builders.cpp)
     target_link_libraries(kdtree_test PRIVATE kdtree gtest_main)
     target_include_directories(kdtree_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/third_party/random123/include)
 
@@ -100,5 +100,8 @@ if(BUILD_TESTING)
     add_executable(kdtree_insertion_benchmark src/cpp/benchmark_insertion.cpp)
     target_link_libraries(kdtree_insertion_benchmark PRIVATE kdtree benchmark::benchmark_main)
     target_include_directories(kdtree_insertion_benchmark PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/third_party/random123/include)
+
+    add_executable(kdtree_build_benchmark src/cpp/benchmark_build.cpp)
+    target_link_libraries(kdtree_build_benchmark PRIVATE kdtree benchmark::benchmark_main)
 endif()
 

@@ -1,8 +1,14 @@
 #pragma once
 
+#include <algorithm>
 #include <future>
 #include <mutex>
 
+#if defined(__cpp_lib_ranges)
+#include <ranges>
+#endif
+
+#include "floyd_rivest.hpp"
 #include "kdtree.hpp"
 #include "kdtree_opt.hpp"
 #include "tournament_tree.hpp"
@@ -12,6 +18,38 @@ namespace wenda {
 namespace kdtree {
 
 namespace detail {
+
+struct PositionAtDimensionCompare {
+    int dimension;
+
+    template <typename T, typename U> bool operator()(T const &lhs, U const &rhs) const noexcept {
+        return lhs.position[dimension] < rhs.position[dimension];
+    }
+};
+
+//! Policy making use of the standard library nth_element function for selection
+struct CxxSelectionPolicy {
+    template <typename It> void operator()(It beg, It median, It end, int dimension) const {
+        PositionAtDimensionCompare comp{dimension};
+
+#if defined(__cpp_lib_ranges)
+        // When available, we use ranges::nth_element to select the median
+        // as it is better integrated with the customization points that we use
+        // to support proxy ranges.
+        std::ranges::nth_element(std::ranges::subrange(beg, end), median, comp);
+#else
+        std::nth_element(beg, median, end, comp);
+#endif
+    }
+};
+
+//! Policy making use of the Floyd-Rivest algorithm for selection
+struct FloydRivestSelectionPolicy {
+    template <typename It> void operator()(It beg, It median, It end, int dimension) const {
+        PositionAtDimensionCompare comp{dimension};
+        floyd_rivest_select(beg, median, end, comp);
+    }
+};
 
 struct MutexLockSynchronization {
     typedef std::mutex mutex_t;
@@ -27,16 +65,21 @@ struct NullSynchonization {
     typedef NullLock lock_t;
 };
 
-template <typename Synchronization = MutexLockSynchronization> struct KDTreeBuilder {
+template <
+    typename Synchronization = MutexLockSynchronization,
+    typename SelectionPolicy = FloydRivestSelectionPolicy>
+struct KDTreeBuilder {
     std::vector<KDTree::KDTreeNode> &nodes_;
-    tcb::span<PositionAndIndex> positions_;
+    PositionAndIndexArray<3> &positions_;
     size_t leaf_size_;
+    size_t block_size_;
     typename Synchronization::mutex_t mutex_;
 
     KDTreeBuilder(
-        std::vector<KDTree::KDTreeNode> &nodes, tcb::span<PositionAndIndex> positions,
-        size_t leaf_size)
-        : nodes_(nodes), positions_(positions), leaf_size_(leaf_size) {}
+        std::vector<KDTree::KDTreeNode> &nodes, PositionAndIndexArray<3> &positions,
+        size_t leaf_size, size_t block_size)
+        : nodes_(nodes), positions_(positions), leaf_size_(std::max(leaf_size, 2 * block_size)),
+          block_size_(block_size) {}
 
     void build(int thread_levels) {
         build_node(0, 0, static_cast<uint32_t>(positions_.size()), thread_levels);
@@ -45,24 +88,21 @@ template <typename Synchronization = MutexLockSynchronization> struct KDTreeBuil
     uint32_t build_node(int dimension, uint32_t left, uint32_t count, int thread_levels) {
         typedef typename Synchronization::lock_t lock_t;
 
-        auto positions = positions_.subspan(left, count);
-
-        if (positions.size() < leaf_size_) {
+        if (count <= leaf_size_) {
             lock_t lock(mutex_);
             nodes_.push_back({-1, 0.0f, left, left + count});
             return static_cast<uint32_t>(nodes_.size() - 1);
         }
 
-        auto median_it = positions.begin() + positions.size() / 2;
-        std::nth_element(
-            positions.begin(),
-            median_it,
-            positions.end(),
-            [dimension](PositionAndIndex const &a, PositionAndIndex const &b) {
-                return a.position[dimension] < b.position[dimension];
-            });
+        // Compute block-size rounded median.
+        uint32_t median_offset = count / 2;
+        median_offset = (median_offset / block_size_) * block_size_;
+        auto median_it = positions_.begin() + left + median_offset;
 
-        float split = median_it->position[dimension];
+        SelectionPolicy()(
+            positions_.begin() + left, median_it, positions_.begin() + left + count, dimension);
+
+        float split = (*median_it).position[dimension];
 
         uint32_t current_idx;
 
@@ -76,9 +116,10 @@ template <typename Synchronization = MutexLockSynchronization> struct KDTreeBuil
 
         if (thread_levels > 0) {
             std::tie(left_idx, right_idx) =
-                build_left_right_threaded(dimension, left, count, thread_levels - 1);
+                build_left_right_threaded(dimension, left, median_offset, count, thread_levels - 1);
         } else {
-            std::tie(left_idx, right_idx) = build_left_right_nonthreaded(dimension, left, count);
+            std::tie(left_idx, right_idx) =
+                build_left_right_nonthreaded(dimension, left, median_offset, count);
         }
 
         {
@@ -90,26 +131,28 @@ template <typename Synchronization = MutexLockSynchronization> struct KDTreeBuil
         return current_idx;
     }
 
-    std::pair<uint32_t, uint32_t>
-    build_left_right_nonthreaded(int dimension, uint32_t left, uint32_t count) {
+    std::pair<uint32_t, uint32_t> build_left_right_nonthreaded(
+        int dimension, uint32_t left, uint32_t count_left, uint32_t count_total) {
         std::pair<uint32_t, uint32_t> result;
 
-        result.first = build_node((dimension + 1) % 3, left, count / 2, 0);
-        result.second = build_node((dimension + 1) % 3, left + count / 2, count - count / 2, 0);
+        result.first = build_node((dimension + 1) % 3, left, count_left, 0);
+        result.second =
+            build_node((dimension + 1) % 3, left + count_left, count_total - count_left, 0);
 
         return result;
     }
 
-    std::pair<uint32_t, uint32_t>
-    build_left_right_threaded(int dimension, uint32_t left, uint32_t count, int thread_levels) {
+    std::pair<uint32_t, uint32_t> build_left_right_threaded(
+        int dimension, uint32_t left, uint32_t count_left, uint32_t count_total,
+        int thread_levels) {
         std::pair<uint32_t, uint32_t> result;
 
         std::future<uint32_t> left_future = std::async(std::launch::async, [&]() {
-            return build_node((dimension + 1) % 3, left, count / 2, thread_levels - 1);
+            return build_node((dimension + 1) % 3, left, count_left, thread_levels - 1);
         });
 
-        result.second =
-            build_node((dimension + 1) % 3, left + count / 2, count - count / 2, thread_levels - 1);
+        result.second = build_node(
+            (dimension + 1) % 3, left + count_left, count_total - count_left, thread_levels - 1);
 
         result.first = left_future.get();
         return result;
@@ -126,7 +169,7 @@ struct KDTreeQuery {
     typedef QueueT queue_t;
 
     DistanceT const &distance_;
-    tcb::span<const PositionAndIndex> positions_;
+    PositionAndIndexArray<3> const &positions_;
     tcb::span<const KDTree::KDTreeNode> nodes_;
     std::array<float, 3> const &query_;
     QueueT distances_;
@@ -136,12 +179,17 @@ struct KDTreeQuery {
 
     KDTreeQuery(
         KDTree const &tree, DistanceT const &distance, std::array<float, 3> const &query, size_t k)
-        : distance_(distance), positions_(tree.positions()), nodes_(tree.nodes()), query_(query),
+        : KDTreeQuery(tree.nodes(), tree.positions(), distance, query, k) {}
+
+    KDTreeQuery(
+        tcb::span<const KDTree::KDTreeNode> nodes, PositionAndIndexArray<3> const &positions,
+        DistanceT const &distance, std::array<float, 3> const &query, size_t k)
+        : distance_(distance), positions_(positions), nodes_(nodes), query_(query),
           distances_(k, {std::numeric_limits<float>::max(), -1}) {}
 
     void process_leaf(KDTree::KDTreeNode const &node) {
         uint32_t const num_points = node.right_ - node.left_;
-        auto node_positions = positions_.subspan(node.left_, num_points);
+        auto node_positions = OffsetRangeContainerWrapper{positions_, node.left_, num_points};
 
         InserterT<DistanceT, QueueT> insert_shorter_distance;
         insert_shorter_distance(node_positions, query_, distances_, distance_);
@@ -149,7 +197,7 @@ struct KDTreeQuery {
         num_points_visited += node_positions.size();
     }
 
-    void compute(KDTree::KDTreeNode const* node) {
+    void compute(KDTree::KDTreeNode const *node) {
         return compute(node, distance_.initial_box(query_));
     }
 

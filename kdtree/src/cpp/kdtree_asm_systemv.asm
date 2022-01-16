@@ -15,7 +15,7 @@ default rel
 %%loop_start:
     shr reg_idx, 1
 
-    ; Compute address at rdi + 12 * rsi
+    ; Compute address at reg_trere + 12 * reg_idx
     lea rax, [reg_idx + 2 * reg_idx]
     lea rax, [reg_tree + 4 * rax]
 
@@ -73,313 +73,130 @@ tournament_tree_replace_top:
     jmp tournament_tree_update_root ; tail call
 
 
-%macro transpose_registers 0
-    ; Transpose loaded values
-    vshufps ymm8, ymm3, ymm4, 0x044
-    vshufps ymm9, ymm3, ymm4, 0x0ee
-    vshufps ymm10, ymm5, ymm6, 0x044
-    vshufps ymm11, ymm5, ymm6, 0x0ee
+%macro compute_distance_l2 0
+    vsubps ymm2, ymm2, ymm5
+    vsubps ymm3, ymm3, ymm6
+    vsubps ymm4, ymm4, ymm7
 
-    vshufps ymm3, ymm8, ymm10, 0x088
-    vshufps ymm4, ymm8, ymm10, 0x0dd
-    vshufps ymm5, ymm9, ymm11, 0x088
-    vshufps ymm7, ymm9, ymm11, 0x0dd
-%endmacro
-
-%macro compute_l2 0-1 ymm3
-    transpose_registers
-
-    ; Compute differences
-    vsubps ymm3, ymm3, ymm12
-    vsubps ymm4, ymm4, ymm13
-    vsubps ymm5, ymm5, ymm14
-
-    ; Compute squares
+    vmulps ymm2, ymm2, ymm2
     vmulps ymm3, ymm3, ymm3
     vmulps ymm4, ymm4, ymm4
-    vmulps ymm5, ymm5, ymm5
 
-    ; Compute sum
-    vaddps ymm3, ymm3, ymm4
-    vaddps %1, ymm3, ymm5
+    vaddps ymm2, ymm2, ymm3
+    vaddps ymm2, ymm2, ymm4
 %endmacro
 
 %macro compute_l2_periodic_squares_impl 1-*
+    ; Computes the 1-d L2 distance with periodic boundary conditions for each of the registers
+    ; This function expects each of the input registers to contain the difference value.
+    ; This function expects ymm10 to hold the box size
+    ; This function uses ymm1, ymm12 as scratch registers
+
     %rep %0
 
-    vsubps ymm8, %1, ymm2
-    vaddps ymm9, %1, ymm2
+    vsubps ymm11, %1, ymm10
+    vaddps ymm12, %1, ymm10
     vmulps %1, %1, %1
-    vmulps ymm8, ymm8, ymm8
-    vmulps ymm9, ymm9, ymm9
-    vminps %1, %1, ymm8
-    vminps %1, %1, ymm9
+    vmulps ymm11, ymm11, ymm11
+    vmulps ymm12, ymm12, ymm12
+    vminps %1, %1, ymm11
+    vminps %1, %1, ymm12
 
     %rotate 1
 
     %endrep
 %endmacro
 
-%macro compute_l2_periodic 0-1 ymm3
-    transpose_registers
+%macro compute_distance_l2_periodic 0
+    vsubps ymm2, ymm2, ymm5
+    vsubps ymm3, ymm3, ymm6
+    vsubps ymm4, ymm4, ymm7
 
-    ; Compute differences
-    vsubps ymm3, ymm3, ymm12
-    vsubps ymm4, ymm4, ymm13
-    vsubps ymm5, ymm5, ymm14
+    compute_l2_periodic_squares_impl ymm2, ymm3, ymm4
 
-    ; Compute squares (including periodic),
-    ; and select smallest value
-    compute_l2_periodic_squares_impl ymm3, ymm4, ymm5
-
-    ; Compute sum
-    vaddps ymm3, ymm3, ymm4
-    vaddps %1, ymm3, ymm5
+    vaddps ymm2, ymm2, ymm3
+    vaddps ymm2, ymm2, ymm4
 %endmacro
 
-%macro compute_l2_single 0-1 xmm0
-    vmovups %1, OWORD [rdi]
-    vsubps %1, %1, xmm2
-    vdpps %1, %1, %1, 01110001b
-%endmacro
-
-%macro compute_l2_periodic_single 0
-    vmaskmovps xmm0, xmm8, OWORD [rdi]
-    vsubps xmm0, xmm0, xmm2
-    vsubps xmm3, xmm0, xmm6
-    vaddps xmm4, xmm0, xmm6
-
-    vmulps xmm0, xmm0, xmm0
-    vmulps xmm3, xmm3, xmm3
-    vmulps xmm4, xmm4, xmm4
-
-    vminps xmm0, xmm0, xmm3
-    vminps xmm0, xmm0, xmm4
-
-    vhaddps xmm0, xmm0, xmm0
-    vhaddps xmm0, xmm0, xmm0
-%endmacro
-
-%macro load_query_vector 0
-    vbroadcastss ymm12, DWORD [rdx]
-    vbroadcastss ymm13, DWORD [rdx + 4]
-    vbroadcastss ymm14, DWORD [rdx + 8]
-%endmacro
-
-%macro prepare_tail_loop 0
-    vmovaps xmm5, xmm15
-    vunpckhps xmm2, xmm12, xmm13
-    vxorps xmm13, xmm13, xmm13
-    vblendps xmm2, xmm2, xmm14, 0100b
-    vblendps xmm2, xmm2, xmm13, 1000b
-%endmacro
-
-%macro prepare_tail_loop_periodic 0
-    vmovaps xmm6, xmm2
-    vmovaps xmm8, OWORD [rel query_mask]
-    prepare_tail_loop
-%endmacro
-
-%macro find_closest_m 4
+%macro insert_closest_l2_avx2 2
     %define compute_distance %1
-    %define compute_distance_single %2
-    %define prepare_tail %3
-    %define epilog_label %4
+    %define done_label %2
 
-    load_query_vector
-    vbroadcastss ymm15, DWORD [rel flt_max]
+    %define reg_query rdx
+    %define reg_tree rcx
+    %define reg_indices r8
+    %define distances_buffer rsp
 
-    lea rsi, [rsi * 8]
-    lea rsi, [rdi + rsi * 2 - 7 * 16]
+    test rsi, rsi
+    je done_label
 
-    ; Check if main loop required
-    cmp rdi, rsi
-    jae %%tail
+    ; Load current best distance
+    vbroadcastss ymm8, DWORD [reg_tree]
+
+    ; Load query vector
+    vbroadcastss ymm5, DWORD [reg_query]
+    vbroadcastss ymm6, DWORD [reg_query + 4]
+    vbroadcastss ymm7, DWORD [reg_query + 8]
+
+    ; Load start pointers
+    mov r12, [rdi]
+    mov r13, [rdi + 8]
+    mov r14, [rdi + 16]
+
+    ; Compute end pointer
+    lea rsi, [r12 + rsi * 4]
 %%loop_start:
-    vmovups ymm3, YWORD [rdi]
-    vmovups ymm4, YWORD [rdi + 32]
-    vmovups ymm5, YWORD [rdi + 64]
-    vmovups ymm6, YWORD [rdi + 96]
+    vmovaps ymm2, YWORD [r12]
+    vmovaps ymm3, YWORD [r13]
+    vmovaps ymm4, YWORD [r14]
 
     compute_distance
 
-    vcmpltps ymm8, ymm3, ymm15
-    vmovmskps eax, ymm8
-    test eax, eax
-    je %%loop_end
+    vcmpltps ymm3, ymm2, ymm8
+    vmovmskps ebx, ymm3
 
-    vmovdqa YWORD [rsp + 32], ymm7
-    vmovaps YWORD [rsp], ymm3
-    xor r10, r10
+    test bl, bl
+    je %%loop_test
+
+    vmovaps [distances_buffer], ymm2
+    xor rdi, rdi
 %%scalar_insert_start:
-    test eax, 1
+    test bl, 1
     je %%scalar_insert_end
 
-    vmovss xmm0, DWORD [rsp + 4 * r10]
-    ucomiss xmm0, xmm15
+    vmovss xmm0, DWORD [distances_buffer + 4 * rdi]
+    ucomiss xmm0, xmm8
     jae %%scalar_insert_end
 
-    vbroadcastss ymm15, xmm0
-    mov r11d, [rsp + 32 + 4 * r10]
+    ; Perform scalar insert
+    mov r15d, DWORD [reg_indices + 4 * rdi]
+    tournament_tree_swap_top_m reg_tree, r9d, xmm0, r15d, r11
+    tournament_tree_update_root_m reg_tree, r9, r15, r10, r11
+    vbroadcastss ymm8, xmm0
 %%scalar_insert_end:
-    shr eax, 1
-    inc r10
-    test eax, eax
-    jne %%scalar_insert_start
-%%loop_end:
-    lea rdi, [rdi + 128]
-    cmp rdi, rsi
-    jb %%loop_start
-
-    mov eax, r11d
-
-%%tail: ; Tail handling start
-    add rsi, 7 * 16 ; Adjust end pointer to non-truncated value
-    cmp rdi, rsi ; Test if tail loop required
-    je epilog_label ; epilog
-
-    prepare_tail
-%%tail_start:
-    compute_distance_single
-    ucomiss xmm0, xmm5
-    jae %%tail_end
-
-    vmovaps xmm5, xmm0
-    mov eax, DWORD[rdi + 12]
-%%tail_end:
-    add rdi, 16
-    cmp rdi, rsi
-    jb %%tail_start
-%endmacro
-
-global wenda_find_closest_l2_avx2
-wenda_find_closest_l2_avx2:
-    push rbp
-    mov rbp, rsp
-    sub rsp, 64
-    and rsp, -32
-
-    find_closest_m compute_l2, compute_l2_single, prepare_tail_loop, .done
-.done:
-    vzeroupper
-    leave
-    ret
-
-global wenda_find_closest_l2_periodic_avx2
-wenda_find_closest_l2_periodic_avx2:
-    push rbp
-    mov rbp, rsp
-    sub rsp, 64
-    and rsp, -32
-
-    vbroadcastss ymm2, xmm0
-    find_closest_m compute_l2_periodic, compute_l2_periodic_single, prepare_tail_loop_periodic, .done
-.done:
-    vzeroupper
-    leave
-    ret
-
-
-%macro insert_closest_m 4
-    %define compute_distance %1
-    %define compute_distance_single %2
-    %define prepare_tail %3
-    %define epilog_label %4
-    load_query_vector
-
-    ; Load current best distance from tree
-    vbroadcastss ymm15, DWORD[rcx]
-
-    ; Adjust rsi to point to end (adjusted for unroll size)
-    lea rsi, [rsi * 8]
-    lea rsi, [rdi + rsi * 2 - 7 * 16]
-
-    ; Check if main loop required
-    cmp rdi, rsi
-    jae %%tail
-
-    ; Load first iteration data
-    vmovups ymm3, YWORD [rdi]
-    vmovups ymm4, YWORD [rdi + 32]
-    vmovups ymm5, YWORD [rdi + 64]
-    vmovups ymm6, YWORD [rdi + 96]
-%%loop_start:
-    ; Compute l2 distance for each pair, store results in ymm0. Indices are also extracted and stored in ymm7.
-    compute_distance ymm0
-
-    vcmpltps ymm8, ymm0, ymm15 ; Compute pointwise comparison of distances to current best
-    vmovmskps ebx, ymm8 ; Store comparison result in ebx
-
-    lea rdi, [rdi + 128] ; Compute pointer for next iteration
-    cmp rdi, rsi
-    jae %%test_scalar_required ; Skip loading next iteration
-
-    ; Load next iteration data
-    vmovups ymm3, YWORD [rdi]
-    vmovups ymm4, YWORD [rdi + 32]
-    vmovups ymm5, YWORD [rdi + 64]
-    vmovups ymm6, YWORD [rdi + 96]
-%%test_scalar_required:
-    test ebx, ebx
-    je %%loop_end ; skip scalar updates if all elements are worse than current best
-
-    vmovaps YWORD [rsp + distances_buffer_offset], ymm0 ; Save computed distances to stack
-    vmovdqa YWORD [rsp + indices_buffer_offset], ymm7 ; Save extracted indices to stack
-    xor r10, r10
-%%scalar_insert_start:  ; Start scalar loop
-    test ebx, 1
-    je %%scalar_insert_end
-
-    ; Load distance from stack
-    vmovss xmm0, DWORD [rsp + distances_buffer_offset + r10]
-    ucomiss xmm0, xmm15
-    jae %%scalar_insert_end
-
-    mov r11d, DWORD [rsp + indices_buffer_offset + r10]
-    tournament_tree_swap_top_m rcx, r12d, xmm0, r11d, rax
-    tournament_tree_update_root_m rcx, r12, r11, r8, r9
-
-    vbroadcastss ymm15, xmm0
-%%scalar_insert_end:  ; Test scalar loop
+    inc rdi
     shr ebx, 1
-    add r10, 4
-    test ebx, ebx
+    test bl, bl
     jne %%scalar_insert_start
-%%loop_end:  ; Test main vectorized loop
-    cmp rdi, rsi
+%%loop_test:
+    ; Reload array pointers
+    add r12, 4 * 8
+    add r13, 4 * 8
+    add r14, 4 * 8
+    add reg_indices, 4 * 8
+    cmp r12, rsi
     jb %%loop_start
-
-%%tail:  ; Tail handling start
-    add rsi, 7 * 16 ; Adjust rsi to point to actual end
-    ; Check if tail handling required
-    cmp rdi, rsi
-    je epilog_label
-
-    prepare_tail
-%%tail_start:  ; Tail loop
-    compute_distance_single
-    ucomiss xmm0, xmm5
-    jae %%tail_end
-
-    mov ebx, DWORD [rdi + 12]
-    tournament_tree_swap_top_m rcx, r12d, xmm0, ebx, r11
-    tournament_tree_update_root_m rcx, r12, rbx, r8, r9
-
-    vmovaps xmm5, xmm0
-%%tail_end:  ; Tail loop check
-    add rdi, 16
-    cmp rdi, rsi
-    jb %%tail_start
 %endmacro
 
 global wenda_insert_closest_l2_avx2
 wenda_insert_closest_l2_avx2:
-    %assign indices_buffer_offset 0
-    %assign distances_buffer_offset 32
-    %assign stack_size 64
+    %assign stack_size 32
 
     push rbx
     push r12
+    push r13
+    push r14
+    push r15
     push rbp
     mov rbp, rsp
 
@@ -387,10 +204,13 @@ wenda_insert_closest_l2_avx2:
     sub rsp, stack_size
     and rsp, -32
 
-    insert_closest_m compute_l2, compute_l2_single, prepare_tail_loop, .done
+    insert_closest_l2_avx2 compute_distance_l2, .done
 .done:
     vzeroupper
     leave
+    pop r15
+    pop r14
+    pop r13
     pop r12
     pop rbx
 
@@ -398,12 +218,13 @@ wenda_insert_closest_l2_avx2:
 
 global wenda_insert_closest_l2_periodic_avx2
 wenda_insert_closest_l2_periodic_avx2:
-    %assign indices_buffer_offset 0
-    %assign distances_buffer_offset 32
-    %assign stack_size 64
+    %assign stack_size 32
 
     push rbx
     push r12
+    push r13
+    push r14
+    push r15
     push rbp
     mov rbp, rsp
 
@@ -411,13 +232,19 @@ wenda_insert_closest_l2_periodic_avx2:
     sub rsp, stack_size
     and rsp, -32
 
-    vbroadcastss ymm2, xmm0 ; Load box size
-    insert_closest_m compute_l2_periodic, compute_l2_periodic_single, prepare_tail_loop_periodic, .done
+    ; Broadcasts the box size from its original register to ymm10
+    vbroadcastss ymm10, xmm0
+
+    insert_closest_l2_avx2 compute_distance_l2_periodic, .done
 .done:
     vzeroupper
     leave
+    pop r15
+    pop r14
+    pop r13
     pop r12
     pop rbx
+
     ret
 
 align 16

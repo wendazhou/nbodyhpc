@@ -11,42 +11,45 @@ namespace py = pybind11;
 
 namespace {
 
-std::vector<wenda::kdtree::PositionAndIndex>
-make_positions_and_indices(py::array_t<float> const &points, std::optional<float> box_size) {
+wenda::kdtree::PositionAndIndexArray<3, float, uint32_t> make_positions_and_indices(
+    py::array_t<float> const &points, std::optional<float> box_size, int block_size) {
     if (points.ndim() != 2 || points.shape(1) != 3) {
         throw std::runtime_error("positions must be a 2D array of shape (N, 3)");
     }
 
     auto points_view = points.unchecked<2>();
+    auto num_points = points.shape(0);
 
-    std::vector<wenda::kdtree::PositionAndIndex> positions(points.shape(0));
+    auto size_up = (num_points + block_size - 1) / block_size * block_size;
 
-    for (size_t i = 0; i < points.shape(0); ++i) {
-        positions[i].position[0] = points_view(i, 0);
-        positions[i].position[1] = points_view(i, 1);
-        positions[i].position[2] = points_view(i, 2);
-        positions[i].index = i;
-    }
+    wenda::kdtree::PositionAndIndexArray<3, float, uint32_t> positions(size_up);
 
-    if (box_size) {
-        auto box_size_value = *box_size;
+    std::iota(positions.indices_.begin(), positions.indices_.end(), 0);
 
-        auto all_in_box = std::all_of(
-            positions.begin(), positions.end(), [box_size_value](auto const &position_and_index) {
-                for (auto i = 0; i < 3; ++i) {
-                    if (position_and_index.position[i] < 0.0f ||
-                        position_and_index.position[i] > box_size_value) {
-                        return false;
-                    }
-                }
-
-                return true;
-            });
-
-        if (!all_in_box) {
-            throw std::runtime_error("When using periodic boundary conditions, all points must lie "
-                                     "within the box (0 <= x <= box_size).");
+    // Pad to next multiple of block_size
+    for (size_t dim = 0; dim < 3; ++dim) {
+        for (size_t i = 0; i < num_points; ++i) {
+            positions.positions_[dim][i] = points_view(i, dim);
         }
+
+        if (box_size) {
+            auto box_size_value = *box_size;
+            auto all_in_box = std::all_of(
+                positions.positions_[dim], positions.positions_[dim] + num_points, [&](float x) {
+                    return x >= 0.0f && x <= box_size_value;
+                });
+
+            if (!all_in_box) {
+                throw std::runtime_error(
+                    "When using periodic boundary conditions, all points must be "
+                    "within the box (0 <= x <= box_size).");
+            }
+        }
+
+        std::fill(
+            positions.positions_[dim] + num_points,
+            positions.positions_[dim] + size_up,
+            std::numeric_limits<float>::max());
     }
 
     return positions;
@@ -63,8 +66,7 @@ class PyKDTree : public wenda::kdtree::KDTree {
     float box_size_;
 
   public:
-    PyKDTree(PyKDTree const &) = default;
-    PyKDTree(PyKDTree &&) = default;
+    PyKDTree(PyKDTree &&) noexcept = default;
 
     size_t num_points() const noexcept { return positions().size(); }
     size_t num_nodes() const noexcept { return nodes().size(); }
@@ -74,8 +76,8 @@ class PyKDTree : public wenda::kdtree::KDTree {
     PyKDTree(
         py::array_t<float> points, int leaf_size, int max_threads, std::optional<float> box_size)
         : KDTree(
-              make_positions_and_indices(points, box_size),
-              {.leaf_size = leaf_size, .max_threads = max_threads}),
+              make_positions_and_indices(points, box_size, 8),
+              {.leaf_size = leaf_size, .max_threads = max_threads, .block_size = 8}),
           periodic_(box_size.has_value()), box_size_(box_size.value_or(0.0f)) {}
 
     static PyKDTree from_points(

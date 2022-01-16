@@ -13,81 +13,8 @@
 
 using namespace wenda::kdtree;
 
-
-namespace {
-
-
-template<template<typename, typename> typename Inserter, typename DistanceT, typename QueueT>
-std::vector<std::pair<float, uint32_t>> find_nearest_inserter(tcb::span<const wenda::kdtree::PositionAndIndex> positions, std::array<float, 3> const& query, int k, DistanceT const& distance) {
-    QueueT queue(k, {std::numeric_limits<float>::max(), -1});
-
-    Inserter<DistanceT, QueueT> inserter;
-
-    inserter(positions, query, queue, distance);
-
-    std::vector<std::pair<float, uint32_t>> result(k);
-    queue.copy_values(result.begin());
-    std::sort(result.begin(), result.end());
-    return result;
-}
-
-}
-
 typedef PriorityQueue<std::pair<float, uint32_t>, PairLessFirst> PairPriorityQueue;
 typedef TournamentTree<std::pair<float, uint32_t>, PairLessFirst> PairTournamentTree;
-
-
-TEST(OptInsertionTest, UnrolledInsertion) {
-    auto positions = wenda::kdtree::make_random_position_and_index(128, 42);
-    auto queries = wenda::kdtree::make_random_position_and_index(4, 43);
-
-    for (auto const& query_and_idx : queries) {
-        auto const& query = query_and_idx.position;
-        auto result_vanilla = find_nearest_inserter<InsertShorterDistanceVanilla, L2Distance, PairPriorityQueue>(positions, query, 8, L2Distance());
-        auto result_unrolled = find_nearest_inserter<InsertShorterDistanceUnrolled4, L2Distance, PairPriorityQueue>(positions, query, 8, L2Distance());
-
-        ASSERT_EQ(result_vanilla, result_unrolled);
-    }
-}
-
-TEST(OptInsertionTest, UnrolledInsertionTournamentTree) {
-    auto positions = wenda::kdtree::make_random_position_and_index(128, 42);
-    auto queries = wenda::kdtree::make_random_position_and_index(4, 43);
-
-    for (auto const& query_and_idx : queries) {
-        auto const& query = query_and_idx.position;
-        auto result_vanilla = find_nearest_inserter<InsertShorterDistanceVanilla, L2Distance, PairPriorityQueue>(positions, query, 8, L2Distance());
-        auto result_unrolled = find_nearest_inserter<InsertShorterDistanceUnrolled4, L2Distance, PairTournamentTree>(positions, query, 8, L2Distance());
-
-        ASSERT_EQ(result_vanilla, result_unrolled);
-    }
-}
-
-TEST(OptInsertionTest, Avx2Insertion) {
-    auto positions = wenda::kdtree::make_random_position_and_index(128, 42);
-    auto queries = wenda::kdtree::make_random_position_and_index(4, 43);
-
-    for (auto const& query_and_idx : queries) {
-        auto const& query = query_and_idx.position;
-        auto result_vanilla = find_nearest_inserter<InsertShorterDistanceVanilla, L2Distance, PairPriorityQueue>(positions, query, 8, L2Distance());
-        auto result_avx = find_nearest_inserter<InsertShorterDistanceAVX, L2Distance, PairPriorityQueue>(positions, query, 8, L2Distance());
-
-        ASSERT_EQ(result_vanilla, result_avx);
-    }
-}
-
-TEST(OptInsertionTest, Avx2InsertionTournamentTree) {
-    auto positions = wenda::kdtree::make_random_position_and_index(128, 42);
-    auto queries = wenda::kdtree::make_random_position_and_index(4, 43);
-
-    for (auto const& query_and_idx : queries) {
-        auto const& query = query_and_idx.position;
-        auto result_vanilla = find_nearest_inserter<InsertShorterDistanceVanilla, L2Distance, PairPriorityQueue>(positions, query, 8, L2Distance());
-        auto result_avx = find_nearest_inserter<InsertShorterDistanceAVX, L2Distance, PairTournamentTree>(positions, query, 8, L2Distance());
-
-        ASSERT_EQ(result_vanilla, result_avx);
-    }
-}
 
 class TournamentTreeFixture : public ::testing::TestWithParam<int> {};
 
@@ -102,8 +29,8 @@ TEST_P(TournamentTreeFixture, TournamentTreeTest) {
 
     wenda::kdtree::TournamentTree<int> tree(num_max, std::numeric_limits<int>::max());
 
-    for (auto const& value : values) {
-        if (value < tree.top())  {
+    for (auto const &value : values) {
+        if (value < tree.top()) {
             tree.replace_top(value);
         }
     }
@@ -123,9 +50,6 @@ TEST_P(TournamentTreeFixture, TournamentTreeTest) {
     ASSERT_EQ(result, expected_result);
 }
 
-
 INSTANTIATE_TEST_SUITE_P(
-    TournamentTreePriority, TournamentTreeFixture, testing::Values(2, 3, 4, 5, 6, 8, 10, 13, 16, 20, 23));
-
-
-
+    TournamentTreePriority, TournamentTreeFixture,
+    testing::Values(2, 3, 4, 5, 6, 8, 10, 13, 16, 20, 23));

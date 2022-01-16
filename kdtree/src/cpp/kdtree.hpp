@@ -1,14 +1,34 @@
 #pragma once
 
+#include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdlib>
 #include <limits>
+#include <type_traits>
 #include <vector>
 
 #include <span.hpp>
 
 namespace wenda {
 namespace kdtree {
+
+#ifdef _MSC_VER
+inline void *aligned_alloc(size_t alignment, size_t size) noexcept {
+    return _aligned_malloc(size, alignment);
+}
+
+inline void aligned_free(void *ptr) noexcept { _aligned_free(ptr); }
+#else
+inline void *aligned_alloc(size_t alignment, size_t size) noexcept {
+    // round up size to next multiple of alignment
+    size = (size + alignment - 1) & ~(alignment - 1);
+    // For some reason std::aligned_alloc not exposed in libstdc++ on MacOS
+    return ::aligned_alloc(alignment, size);
+}
+
+inline void aligned_free(void *ptr) noexcept { return free(ptr); }
+#endif
 
 //! This structure encapsulates information to compute the l2 distance between two points.
 struct L2Distance {
@@ -55,7 +75,8 @@ struct L2Distance {
     }
 };
 
-//! This structure encapsulates information to compute l2 distance with periodic boundary conditions.
+//! This structure encapsulates information to compute l2 distance with periodic boundary
+//! conditions.
 template <typename T> struct L2PeriodicDistance {
     //! Size of the box for periodic boundary conditions.
     T box_size_;
@@ -76,7 +97,8 @@ template <typename T> struct L2PeriodicDistance {
         return result;
     }
 
-    //! Computes the distance from a point to an axis-aligned box which does not cross the periodic boundary.
+    //! Computes the distance from a point to an axis-aligned box which does not cross the periodic
+    //! boundary.
     template <size_t R>
     T box_distance(std::array<T, R> const &point, std::array<T, 2 * R> const &box) const {
         T result = 0;
@@ -128,12 +150,311 @@ struct KDTreeConfiguration {
     int leaf_size = 64;
     //! Maximum number of threads to use during tree construction. If -1, use all available threads.
     int max_threads = 0;
+    //! All leaf nodes must have a number of points which is divisible by this quantity.
+    int block_size = 8;
 };
 
 struct alignas(16) PositionAndIndex {
     std::array<float, 3> position;
     uint32_t index;
 };
+
+template <typename T> struct OffsetRangeContainerWrapper {
+    T &container_;
+    size_t offset;
+    size_t count;
+
+    OffsetRangeContainerWrapper(T &container)
+        : container_(container), offset(0), count(container.size()) {}
+    OffsetRangeContainerWrapper(T &container, size_t offset, size_t count)
+        : container_(container), offset(offset), count(count) {}
+
+    decltype(auto) begin() { return container_.begin() + offset; }
+    decltype(auto) begin() const { return container_.begin() + offset; }
+    decltype(auto) end() { return container_.begin() + offset + count; }
+    decltype(auto) end() const { return container_.begin() + offset + count; }
+
+    decltype(auto) operator[](size_t i) { return container_[offset + i]; }
+    decltype(auto) operator[](size_t i) const { return container_[offset + i]; }
+
+    size_t size() const { return count; }
+};
+
+namespace detail {
+template <typename ArrayBase, typename Derived> struct PositionAndIndexIteratorBase {
+    typedef PositionAndIndex value_type;
+    typedef std::random_access_iterator_tag iterator_category;
+    typedef std::ptrdiff_t difference_type;
+
+    ptrdiff_t offset_;
+    ArrayBase array_;
+
+    PositionAndIndexIteratorBase() = default;
+    PositionAndIndexIteratorBase(ArrayBase array, ptrdiff_t offset)
+        : offset_(offset), array_(array) {}
+    PositionAndIndexIteratorBase(PositionAndIndexIteratorBase const &) = default;
+
+    Derived &operator++() {
+        ++offset_;
+        return *static_cast<Derived *>(this);
+    }
+
+    Derived operator++(int) {
+        Derived result = *static_cast<Derived *>(this);
+        ++offset_;
+        return result;
+    }
+
+    Derived &operator--() {
+        --offset_;
+        return *static_cast<Derived *>(this);
+    }
+
+    Derived operator--(int) {
+        Derived result = *static_cast<Derived *>(this);
+        --offset_;
+        return result;
+    }
+
+    Derived &operator+=(ptrdiff_t n) {
+        offset_ += n;
+        return *static_cast<Derived *>(this);
+    }
+
+    Derived &operator-=(ptrdiff_t n) {
+        offset_ -= n;
+        return *static_cast<Derived *>(this);
+    }
+
+    decltype(auto) operator[](ptrdiff_t n) const {
+        return *(*static_cast<const Derived *>(this) + n);
+    }
+
+    Derived operator+(ptrdiff_t n) const { return Derived(array_, offset_ + n); }
+
+    Derived operator-(ptrdiff_t n) const { return Derived(array_, offset_ - n); }
+
+    ptrdiff_t operator-(Derived const &other) const { return offset_ - other.offset_; }
+
+    bool operator==(Derived const &other) const { return offset_ == other.offset_; }
+
+    bool operator!=(Derived const &other) const { return offset_ != other.offset_; }
+
+    bool operator<(Derived const &other) const { return offset_ < other.offset_; }
+
+    bool operator<=(Derived const &other) const { return offset_ <= other.offset_; }
+
+    bool operator>(Derived const &other) const { return offset_ > other.offset_; }
+
+    bool operator>=(Derived const &other) const { return offset_ >= other.offset_; }
+
+    Derived &operator=(Derived const &other) {
+        offset_ = other.offset_;
+        return *static_cast<Derived *>(this);
+    }
+};
+
+template <size_t R, typename T, typename IndexT> struct PositionAndIndexIterator;
+
+template <size_t R, typename T, typename IndexT> struct ConstPositionAndIndexIterator;
+
+template <size_t R, typename T, typename IndexT> struct PositionAndIndexProxy {
+    std::array<std::reference_wrapper<float>, R> position;
+    uint32_t &index;
+
+    operator PositionAndIndex() const {
+        return {std::array<float, 3>{position[0], position[1], position[2]}, index};
+    }
+
+    const PositionAndIndexProxy &operator=(PositionAndIndex const &other) const {
+        position[0].get() = other.position[0];
+        position[1].get() = other.position[1];
+        position[2].get() = other.position[2];
+        index = other.index;
+        return *this;
+    }
+
+    const PositionAndIndexProxy &operator=(PositionAndIndexProxy const &other) const {
+        position[0].get() = other.position[0];
+        position[1].get() = other.position[1];
+        position[2].get() = other.position[2];
+        index = other.index;
+        return *this;
+    }
+};
+
+} // namespace detail
+
+template <size_t R = 3, typename T = float, typename IndexT = uint32_t>
+struct PositionAndIndexArray {
+    typedef detail::PositionAndIndexIterator<R, T, IndexT> iterator;
+    typedef detail::ConstPositionAndIndexIterator<R, T, IndexT> const_iterator;
+    typedef detail::PositionAndIndexProxy<R, T, IndexT> PositionAndIndexProxy;
+
+    std::array<T *, R> positions_;
+    std::vector<IndexT> indices_;
+
+    PositionAndIndexArray() = default;
+    PositionAndIndexArray(PositionAndIndexArray const &other) : indices_(other.indices_) {
+        for (size_t i = 0; i < R; ++i) {
+            positions_[i] = static_cast<T*>(aligned_alloc(64, sizeof(T) * indices_.size()));
+            std::copy(other.positions_[i], other.positions_[i] + indices_.size(), positions_[i]);
+        }
+    }
+
+    PositionAndIndexArray(PositionAndIndexArray &&other) noexcept
+        : positions_(std::move(other.positions_)), indices_(std::move(other.indices_)) {
+        std::fill(other.positions_.begin(), other.positions_.end(), nullptr);
+    }
+
+    PositionAndIndexArray &operator=(PositionAndIndexArray const &) = delete;
+    PositionAndIndexArray &operator=(PositionAndIndexArray &&other) noexcept {
+        std::swap(positions_, other.positions_);
+        std::swap(indices_, other.indices_);
+
+        return *this;
+    }
+
+    explicit PositionAndIndexArray(size_t n) : indices_(n) {
+        for (size_t i = 0; i < R; ++i) {
+            positions_[i] = static_cast<T *>(aligned_alloc(64, sizeof(T) * n));
+        }
+    }
+
+    template <
+        typename Container,
+        typename std::enable_if<std::negation<std::is_integral<Container>>::value, bool>::type =
+            true>
+    explicit PositionAndIndexArray(Container const &positions)
+        : PositionAndIndexArray(std::size(positions)) {
+        using std::begin;
+        using std::end;
+
+        for (size_t i = 0; i < R; ++i) {
+            std::transform(
+                begin(positions), end(positions), positions_[i], [i](PositionAndIndex const &p) {
+                    return p.position[i];
+                });
+        }
+
+        std::transform(
+            begin(positions), end(positions), indices_.begin(), [](PositionAndIndex const &p) {
+                return p.index;
+            });
+    }
+
+    ~PositionAndIndexArray() noexcept {
+        for (auto &position_ptr : positions_) {
+            aligned_free(position_ptr);
+            position_ptr = nullptr;
+        }
+    }
+
+    size_t size() const noexcept { return indices_.size(); }
+
+    PositionAndIndexProxy operator[](size_t i) noexcept {
+        return PositionAndIndexProxy{
+            {positions_[0][i], positions_[1][i], positions_[2][i]}, indices_[i]};
+    }
+
+    PositionAndIndex operator[](size_t i) const noexcept {
+        return PositionAndIndex{
+            {positions_[0][i], positions_[1][i], positions_[2][i]}, indices_[i]};
+    }
+
+    iterator begin() noexcept { return iterator(this, 0); }
+    iterator end() noexcept { return iterator(this, size()); }
+
+    const_iterator begin() const noexcept { return const_iterator(this, 0); }
+    const_iterator end() const noexcept { return const_iterator(this, size()); }
+
+    void swap_elements(size_t i, size_t j) noexcept {
+        std::swap(indices_[i], indices_[j]);
+        for (size_t k = 0; k < R; ++k) {
+            std::swap(positions_[k][i], positions_[k][j]);
+        }
+    }
+};
+
+namespace detail {
+
+template <size_t R, typename T, typename IndexT>
+struct PositionAndIndexIterator
+    : detail::PositionAndIndexIteratorBase<
+          PositionAndIndexArray<R, T, IndexT> *, PositionAndIndexIterator<R, T, IndexT>> {
+    typedef PositionAndIndexArray<R, T, IndexT> Array;
+    typedef detail::PositionAndIndexIteratorBase<Array *, PositionAndIndexIterator> iterator_base;
+    typedef typename iterator_base::value_type value_type;
+    typedef typename iterator_base::difference_type difference_type;
+    typedef typename iterator_base::iterator_category iterator_category;
+    typedef typename Array::PositionAndIndexProxy reference;
+    typedef void pointer;
+
+    PositionAndIndexIterator() = default;
+    PositionAndIndexIterator(Array *array, size_t offset) : iterator_base(array, offset) {}
+    PositionAndIndexIterator(PositionAndIndexIterator const &) = default;
+
+    using iterator_base::operator==;
+    using iterator_base::operator!=;
+
+    reference operator*() const { return (*this->array_)[this->offset_]; }
+};
+
+template <size_t R, typename T, typename IndexT>
+PositionAndIndexIterator<R, T, IndexT>
+operator+(ptrdiff_t n, PositionAndIndexIterator<R, T, IndexT> const &it) {
+    return it + n;
+}
+
+template <size_t R, typename T, typename IndexT>
+struct ConstPositionAndIndexIterator : detail::PositionAndIndexIteratorBase<
+                                           PositionAndIndexArray<R, T, IndexT> const *,
+                                           ConstPositionAndIndexIterator<R, T, IndexT>> {
+
+    typedef PositionAndIndexArray<R, T, IndexT> Array;
+
+    typedef detail::PositionAndIndexIteratorBase<Array const *, ConstPositionAndIndexIterator>
+        iterator_base;
+    typedef typename iterator_base::value_type value_type;
+    typedef typename iterator_base::difference_type difference_type;
+    typedef typename iterator_base::iterator_category iterator_category;
+    typedef typename Array::PositionAndIndexProxy reference;
+    typedef void pointer;
+
+    ConstPositionAndIndexIterator() = default;
+    ConstPositionAndIndexIterator(Array const *array, size_t offset)
+        : iterator_base(array, offset) {}
+    ConstPositionAndIndexIterator(ConstPositionAndIndexIterator const &) = default;
+
+    using iterator_base::operator==;
+    using iterator_base::operator!=;
+
+    value_type operator*() const { return (*this->array_)[this->offset_]; }
+};
+
+template <size_t R, typename T, typename IndexT>
+void iter_swap(
+    PositionAndIndexIterator<R, T, IndexT> const &it1,
+    PositionAndIndexIterator<R, T, IndexT> const &it2) noexcept {
+    it1.array_->swap_elements(it1.offset_, it2.offset_);
+}
+
+template <size_t R, typename T, typename IndexT>
+PositionAndIndex iter_move(PositionAndIndexIterator<R, T, IndexT> const &it) {
+    return (*const_cast<const PositionAndIndexArray<R, T, IndexT> *>(it.array_))[it.offset_];
+}
+
+template <size_t R, typename T, typename IndexT>
+void swap(PositionAndIndexProxy<R, T, IndexT> lhs, PositionAndIndexProxy<R, T, IndexT> rhs) {
+    using std::swap;
+    for (size_t i = 0; i < R; ++i) {
+        swap(lhs.position[i].get(), rhs.position[i].get());
+    }
+
+    swap(lhs.index, rhs.index);
+}
+
+} // namespace detail
 
 class KDTree {
   public:
@@ -158,7 +479,7 @@ class KDTree {
 
   private:
     std::vector<KDTreeNode> nodes_;
-    std::vector<PositionAndIndex> positions_;
+    PositionAndIndexArray<3, float> positions_;
 
   public:
     /** Builds a new KD-tree from the given positions.
@@ -169,21 +490,20 @@ class KDTree {
     KDTree(tcb::span<const std::array<float, 3>> positions, KDTreeConfiguration const &config = {});
 
     /** Builds a new KD-tree from the given positions.
-     * 
+     *
      * This constructor makes use of a pre-allocated positions vector.
      * To build from an array of positions, see other constructor.
-     * 
-     * @param positions_and_indices The positions and indices to build the tree from.
+     *
+     * @param positions The positions and indices to build the tree from.
      * @param config Configuration to use when building the tree.
-     * 
+     *
      */
-    KDTree(std::vector<PositionAndIndex>&& positions_and_indices, KDTreeConfiguration const &config = {});
+    KDTree(PositionAndIndexArray<3> positions, KDTreeConfiguration const &config = {});
 
-    KDTree(KDTree const &) = default;
     KDTree(KDTree &&) noexcept = default;
 
     tcb::span<const KDTreeNode> nodes() const noexcept { return nodes_; }
-    tcb::span<const PositionAndIndex> positions() const noexcept { return positions_; }
+    PositionAndIndexArray<3> const &positions() const noexcept { return positions_; }
 
     /** Searches the tree for the nearest neighbors of the given query point.
      *
@@ -207,7 +527,8 @@ extern template std::vector<std::pair<float, uint32_t>> KDTree::find_closest<L2D
     std::array<float, 3> const &position, size_t k, L2Distance const &,
     KDTreeQueryStatistics *statistics) const;
 
-extern template std::vector<std::pair<float, uint32_t>> KDTree::find_closest<L2PeriodicDistance<float>>(
+extern template std::vector<std::pair<float, uint32_t>>
+KDTree::find_closest<L2PeriodicDistance<float>>(
     std::array<float, 3> const &position, size_t k, L2PeriodicDistance<float> const &,
     KDTreeQueryStatistics *statistics) const;
 
