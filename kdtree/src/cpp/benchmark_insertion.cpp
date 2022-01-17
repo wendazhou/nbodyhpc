@@ -135,8 +135,7 @@ void Insertion(benchmark::State &state) {
     // force 32-element alignment
     num_points = (num_points / 32) * 32;
 
-    auto positions =
-        kdt::PositionAndIndexArray(kdt::make_random_position_and_index(num_points, 42));
+    auto positions = kdt::make_random_position_and_index_array(num_points, 42);
     std::array<float, 3> query = {0.4, 0.5, 0.6};
 
     typedef InserterL2<InserterT, QueueT> Inserter;
@@ -152,7 +151,7 @@ void Insertion(benchmark::State &state) {
         idx += 1;
     }
 
-    state.SetBytesProcessed(state.iterations() * query_size * sizeof(kdt::PositionAndIndex));
+    state.SetBytesProcessed(state.iterations() * query_size * sizeof(decltype(positions)::value_type));
 }
 
 template <
@@ -171,8 +170,7 @@ void InsertionPeriodic(benchmark::State &state) {
     // force 32-element alignment
     num_points = (num_points / 32) * 32;
 
-    auto positions =
-        kdt::PositionAndIndexArray(kdt::make_random_position_and_index(num_points, 42));
+    auto positions = kdt::make_random_position_and_index_array(num_points, 42);
     std::array<float, 3> query = {0.4, 0.5, 0.6};
 
     typedef InserterL2Periodic<InserterT, QueueT> Inserter;
@@ -188,7 +186,7 @@ void InsertionPeriodic(benchmark::State &state) {
         idx += 1;
     }
 
-    state.SetBytesProcessed(state.iterations() * query_size * sizeof(kdt::PositionAndIndex));
+    state.SetBytesProcessed(state.iterations() * query_size * sizeof(decltype(positions)::value_type));
 }
 
 void Memcpy(benchmark::State &state) {
@@ -198,7 +196,7 @@ void Memcpy(benchmark::State &state) {
     auto positions = kdt::make_random_position_and_index(num_points, 42);
     auto positions_span = tcb::make_span(positions);
 
-    std::vector<kdt::PositionAndIndex> positions_copy(query_size);
+    decltype(positions) positions_copy(query_size);
 
     size_t idx = 0;
 
@@ -212,7 +210,7 @@ void Memcpy(benchmark::State &state) {
         idx = (idx + 1) % (num_points / query_size);
     }
 
-    state.SetBytesProcessed(state.iterations() * query_size * sizeof(kdt::PositionAndIndex));
+    state.SetBytesProcessed(state.iterations() * query_size * sizeof(positions[0]));
 }
 
 void ReduceDistance(benchmark::State &state) {
@@ -240,13 +238,13 @@ void ReduceDistance(benchmark::State &state) {
             subspan.end(),
             std::numeric_limits<float>::max(),
             [](float a, float b) { return std::min(a, b); },
-            [&](kdt::PositionAndIndex const &p) { return distance(p.position, query); });
+            [&](auto const &p) { return distance(p.position, query); });
         benchmark::DoNotOptimize(result);
 
         idx = (idx + 1) % (num_points / query_size);
     }
 
-    state.SetBytesProcessed(state.iterations() * query_size * sizeof(kdt::PositionAndIndex));
+    state.SetBytesProcessed(state.iterations() * query_size * sizeof(kdt::PositionAndIndex<3>));
 }
 
 

@@ -23,13 +23,13 @@
 #include <span.hpp>
 
 namespace {
-std::vector<wenda::kdtree::PositionAndIndex> resize_to_following_multiple(
-    std::vector<wenda::kdtree::PositionAndIndex> &&positions, size_t block_size) {
+std::vector<wenda::kdtree::PositionAndIndex<3>> resize_to_following_multiple(
+    std::vector<wenda::kdtree::PositionAndIndex<3>> &&positions, size_t block_size) {
 
     auto size_up = (positions.size() + block_size - 1) / block_size * block_size;
     positions.resize(
         size_up,
-        wenda::kdtree::PositionAndIndex{
+        wenda::kdtree::PositionAndIndex<3>{
             {std::numeric_limits<float>::max(),
              std::numeric_limits<float>::max(),
              std::numeric_limits<float>::max()},
@@ -42,6 +42,24 @@ std::vector<wenda::kdtree::PositionAndIndex> resize_to_following_multiple(
 namespace wenda {
 
 namespace kdtree {
+
+#ifdef _MSC_VER
+// MSVC does not support C++ standard aligned alloc
+void *aligned_alloc(size_t alignment, size_t size) noexcept {
+    return _aligned_malloc(size, alignment);
+}
+
+void aligned_free(void *ptr) noexcept { _aligned_free(ptr); }
+#else
+void *aligned_alloc(size_t alignment, size_t size) noexcept {
+    // round up size to next multiple of alignment
+    size = (size + alignment - 1) & ~(alignment - 1);
+    // For some reason std::aligned_alloc not exposed in libstdc++ on MacOS
+    return ::aligned_alloc(alignment, size);
+}
+
+void aligned_free(void *ptr) noexcept { return free(ptr); }
+#endif
 
 PositionAndIndexArray<3, float, uint32_t>
 make_position_and_indices(tcb::span<const std::array<float, 3>> const &positions, int block_size) {

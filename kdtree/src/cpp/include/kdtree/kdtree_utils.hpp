@@ -13,9 +13,10 @@
 namespace wenda {
 namespace kdtree {
 
-inline std::vector<PositionAndIndex>
+template <size_t R = 3>
+inline std::vector<PositionAndIndex<R>>
 make_random_position_and_index(uint32_t n, unsigned int seed, float boxsize = 1.0) {
-    std::vector<PositionAndIndex> positions(n);
+    std::vector<PositionAndIndex<R>> positions(n);
 
     typedef r123::Philox4x32 RNG;
     RNG rng;
@@ -28,7 +29,7 @@ make_random_position_and_index(uint32_t n, unsigned int seed, float boxsize = 1.
         c.v[1] = i;
         auto r = rng(c, uk);
 
-        for (size_t dim = 0; dim < 3; ++dim) {
+        for (size_t dim = 0; dim < R; ++dim) {
             c.v[0] = dim;
             auto r = rng(c, uk);
             positions[i].position[dim] = r123::u01<float>(r[0]) * boxsize;
@@ -112,8 +113,8 @@ typename ContainerAdapter::container_type &get_container_from_adapter(ContainerA
  * @param block_size If positive, pads the array to a multiple of the given block size.
  *
  */
-PositionAndIndexArray<3, float, uint32_t>
-make_position_and_indices(tcb::span<const std::array<float, 3>> const &positions, int block_size = -1);
+PositionAndIndexArray<3, float, uint32_t> make_position_and_indices(
+    tcb::span<const std::array<float, 3>> const &positions, int block_size = -1);
 
 } // namespace kdtree
 } // namespace wenda
