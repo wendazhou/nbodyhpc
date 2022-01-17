@@ -1,4 +1,4 @@
-#include "kdtree_build_opt.hpp"
+#include <kdtree/kdtree_build_opt.hpp>
 
 #include <cmath>
 

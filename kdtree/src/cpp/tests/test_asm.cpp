@@ -3,10 +3,10 @@
 
 #include <gtest/gtest.h>
 
-#include "kdtree.hpp"
-#include "kdtree_opt.hpp"
-#include "kdtree_utils.hpp"
-#include "tournament_tree.hpp"
+#include <kdtree/kdtree.hpp>
+#include <kdtree/kdtree_opt.hpp>
+#include <kdtree/kdtree_utils.hpp>
+#include <kdtree/tournament_tree.hpp>
 
 extern "C" {
 void tournament_tree_update_root(

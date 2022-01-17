@@ -3,11 +3,11 @@
 
 #include <gtest/gtest.h>
 
-#include "kdtree.hpp"
-#include "kdtree_impl.hpp"
-#include "kdtree_opt.hpp"
-#include "kdtree_opt_asm.hpp"
-#include "kdtree_utils.hpp"
+#include <kdtree/kdtree.hpp>
+#include <kdtree/kdtree_impl.hpp>
+#include <kdtree/kdtree_opt.hpp>
+#include <kdtree/kdtree_opt_asm.hpp>
+#include <kdtree/kdtree_utils.hpp>
 
 namespace kdt = wenda::kdtree;
 

@@ -1,9 +1,9 @@
 #include <vector>
 
-#include "kdtree.hpp"
-#include "kdtree_build_opt.hpp"
-#include "kdtree_impl.hpp"
-#include "kdtree_utils.hpp"
+#include <kdtree/kdtree.hpp>
+#include <kdtree/kdtree_build_opt.hpp>
+#include <kdtree/kdtree_impl.hpp>
+#include <kdtree/kdtree_utils.hpp>
 
 #include <Random123/philox.h>
 #include <gtest/gtest.h>

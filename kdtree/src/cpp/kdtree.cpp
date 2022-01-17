@@ -1,4 +1,4 @@
-#include "kdtree.hpp"
+#include <kdtree/kdtree.hpp>
 
 #include <algorithm>
 #include <array>
@@ -14,12 +14,12 @@
 #include <shared_mutex>
 #include <vector>
 
-#include "kdtree_build_opt.hpp"
-#include "kdtree_impl.hpp"
-#include "kdtree_opt.hpp"
-#include "kdtree_opt_asm.hpp"
-#include "kdtree_utils.hpp"
-#include "tournament_tree.hpp"
+#include <kdtree/kdtree_build_opt.hpp>
+#include <kdtree/kdtree_impl.hpp>
+#include <kdtree/kdtree_opt.hpp>
+#include <kdtree/kdtree_opt_asm.hpp>
+#include <kdtree/kdtree_utils.hpp>
+#include <kdtree/tournament_tree.hpp>
 #include <span.hpp>
 
 namespace {

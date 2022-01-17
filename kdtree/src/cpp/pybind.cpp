@@ -4,7 +4,7 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
-#include "kdtree.hpp"
+#include <kdtree/kdtree.hpp>
 #include <thread_pool.hpp>
 
 namespace py = pybind11;

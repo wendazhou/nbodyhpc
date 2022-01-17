@@ -1,4 +1,4 @@
-#include "floyd_rivest.hpp"
+#include <kdtree/floyd_rivest.hpp>
 
 #include <algorithm>
 #include <vector>
@@ -6,9 +6,9 @@
 #include <Random123/philox.h>
 #include <gtest/gtest.h>
 
-#include "kdtree_build_opt.hpp"
-#include "kdtree_impl.hpp"
-#include "kdtree_utils.hpp"
+#include <kdtree/kdtree_build_opt.hpp>
+#include <kdtree/kdtree_impl.hpp>
+#include <kdtree/kdtree_utils.hpp>
 
 namespace {
 

@@ -8,11 +8,11 @@
 #include <Random123/philox.h>
 #include <Random123/uniform.hpp>
 
-#include "kdtree.hpp"
-#include "kdtree_opt.hpp"
-#include "kdtree_opt_asm.hpp"
-#include "kdtree_utils.hpp"
-#include "tournament_tree.hpp"
+#include <kdtree/kdtree.hpp>
+#include <kdtree/kdtree_opt.hpp>
+#include <kdtree/kdtree_opt_asm.hpp>
+#include <kdtree/kdtree_utils.hpp>
+#include <kdtree/tournament_tree.hpp>
 
 namespace kdt = wenda::kdtree;
 
