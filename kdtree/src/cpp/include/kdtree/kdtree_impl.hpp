@@ -65,6 +65,16 @@ struct NullSynchonization {
     typedef NullLock lock_t;
 };
 
+/** Main implementation for building kd-tree nodes.
+ * This class contains the main implementation for building a kd-tree,
+ * parametrized by a Synchronization policy, which controls synchronization
+ * when building the tree using multiple threads, and a SelectionPolicy,
+ * which customizes the strategy for selecting the median element.
+ * 
+ * @tparam Synchronization Synchronization policy used for building the tree.
+ * @tparam SelectionPolicy Selection policy used for selecting the median element.
+ * 
+ */
 template <
     typename Synchronization = MutexLockSynchronization,
     typename SelectionPolicy = FloydRivestSelectionPolicy>
@@ -99,6 +109,7 @@ struct KDTreeBuilder {
         median_offset = (median_offset / block_size_) * block_size_;
         auto median_it = positions_.begin() + left + median_offset;
 
+        // Select the median element (and partition the array).
         SelectionPolicy()(
             positions_.begin() + left, median_it, positions_.begin() + left + count, dimension);
 
@@ -107,6 +118,7 @@ struct KDTreeBuilder {
         uint32_t current_idx;
 
         {
+            // Build temporary node.
             lock_t lock(mutex_);
             current_idx = static_cast<uint32_t>(nodes_.size());
             nodes_.push_back({dimension, split, 0u, 0u});
@@ -114,6 +126,7 @@ struct KDTreeBuilder {
 
         uint32_t left_idx, right_idx;
 
+        // Recurse into subtrees.
         if (thread_levels > 0) {
             std::tie(left_idx, right_idx) =
                 build_left_right_threaded(dimension, left, median_offset, count, thread_levels - 1);
@@ -123,6 +136,7 @@ struct KDTreeBuilder {
         }
 
         {
+            // Adjust indices for current node.
             lock_t lock(mutex_);
             nodes_[current_idx].left_ = left_idx;
             nodes_[current_idx].right_ = right_idx;
@@ -159,10 +173,18 @@ struct KDTreeBuilder {
     }
 };
 
-//! Utility structure used to store state of KD-tree search.
+/** Main implementation for querying nearest neighbour using a kd-tree.
+ * This class contains the main implementation for querying nearest neighbour
+ * using a kd-tree. This class is parametrized by a distance function, a queue class,
+ * and an inserter class.
+ * 
+ * The inserter is the policy which controls the brute-force stage of the search.
+ * Optimized implementations are available which make use of hardware features such as AVX2.
+ * 
+ */
 template <
     typename DistanceT = L2Distance,
-    typename QueueT = PriorityQueue<std::pair<float, uint32_t>, PairLessFirst>,
+    typename QueueT = TournamentTree<std::pair<float, uint32_t>, PairLessFirst>,
     template <typename, typename> typename InserterT = InsertShorterDistanceVanilla>
 struct KDTreeQuery {
     typedef std::pair<float, uint32_t> result_t;

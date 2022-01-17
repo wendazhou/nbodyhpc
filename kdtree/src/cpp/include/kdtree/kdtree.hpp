@@ -165,6 +165,7 @@ class KDTree {
   private:
     std::vector<KDTreeNode> nodes_;
     PositionAndIndexArray<3, float> positions_;
+    KDTreeConfiguration config_;
 
   public:
     /** Builds a new KD-tree from the given positions.
@@ -189,6 +190,7 @@ class KDTree {
 
     tcb::span<const KDTreeNode> nodes() const noexcept { return nodes_; }
     PositionAndIndexArray<3> const &positions() const noexcept { return positions_; }
+    KDTreeConfiguration const& config() const noexcept { return config_; }
 
     /** Searches the tree for the nearest neighbors of the given query point.
      *

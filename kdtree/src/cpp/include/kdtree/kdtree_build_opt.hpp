@@ -1,7 +1,8 @@
 #pragma once
 
+//! This header contains optimized implementations of selection policies used for tree-building.
+
 #include "kdtree.hpp"
-#include <immintrin.h>
 
 namespace wenda {
 
@@ -22,10 +23,12 @@ void quickselect_float_array(float *array, size_t n, size_t k);
 //! subroutine.
 void floyd_rivest_float_array(float *array, size_t n, size_t k);
 
+//! Floyd-Rivest subroutine for partitioning a PositionAndIndexArray.
 void floyd_rivest_select_loop_position_array(
     PositionAndIndexArray<3> &array, std::ptrdiff_t left, std::ptrdiff_t right, std::ptrdiff_t k,
     int dimension);
 
+//! Floyd-Rivest subroutine for partitioning a PositionAndIndexArray, using AVX2 intrinsics.
 void floyd_rivest_select_loop_position_array_avx2(
     PositionAndIndexArray<3> &array, std::ptrdiff_t left, std::ptrdiff_t right, std::ptrdiff_t k,
     int dimension);

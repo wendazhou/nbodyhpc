@@ -1,5 +1,7 @@
 #pragma once
 
+//! Assembly optimized inserter.
+
 #include <cassert>
 #include <cstdint>
 
@@ -20,6 +22,11 @@ namespace wenda {
 
 namespace kdtree {
 
+//! This Inserter is specialized for L2 distance and periodic L2 distance
+//! on a tournament tree structure. It accesses that structure directly
+//! and implements optimized computation using AVX2 intrinsics and conditional moves.
+//!
+//! This template is explicitly specialized for the combinations of distances and queue types it supports.
 template <typename DistanceT, typename QueueT> struct InsertShorterDistanceAsm;
 
 template <>

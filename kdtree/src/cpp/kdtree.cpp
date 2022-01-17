@@ -93,7 +93,7 @@ KDTree::KDTree(tcb::span<const std::array<float, 3>> positions, KDTreeConfigurat
     : KDTree(make_position_and_indices(positions, config.block_size), config) {}
 
 KDTree::KDTree(PositionAndIndexArray<3> positions, KDTreeConfiguration const &config)
-    : positions_(std::move(positions)) {
+    : positions_(std::move(positions)), config_(config) {
 
     if (positions_.size() > static_cast<size_t>(std::numeric_limits<uint32_t>::max())) {
         throw std::runtime_error("More than uint32_t points are not supported.");

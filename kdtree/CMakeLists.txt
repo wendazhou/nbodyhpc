@@ -97,11 +97,12 @@ if(BUILD_TESTING)
     include(GoogleTest)
     gtest_discover_tests(kdtree_test)
 
-    add_executable(kdtree_insertion_benchmark src/cpp/benchmark_insertion.cpp)
+    add_executable(kdtree_insertion_benchmark src/cpp/benchmarks/benchmark_insertion.cpp)
     target_link_libraries(kdtree_insertion_benchmark PRIVATE kdtree benchmark::benchmark_main)
     target_include_directories(kdtree_insertion_benchmark PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/third_party/random123/include)
 
-    add_executable(kdtree_build_benchmark src/cpp/benchmark_build.cpp)
+    add_executable(kdtree_build_benchmark src/cpp/benchmarks/benchmark_build.cpp)
     target_link_libraries(kdtree_build_benchmark PRIVATE kdtree benchmark::benchmark_main)
+    target_include_directories(kdtree_build_benchmark PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/third_party/random123/include)
 endif()
 

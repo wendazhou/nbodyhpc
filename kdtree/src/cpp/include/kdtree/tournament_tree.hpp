@@ -1,5 +1,7 @@
 #pragma once
 
+//! Implementation of a TournamentTree to support fast top-k queries.
+
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
