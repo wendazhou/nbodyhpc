@@ -100,6 +100,8 @@ template <typename T, typename Cmp = std::less<T>> class TournamentTree {
     //! Note: this should be manipulated with care, as
     //!     it may break the tree invariants.
     std::vector<value_t>& data() { return data_; }
+
+    size_t size() const noexcept { return data_.size() / 2; }
 };
 
 /** An adapter for std::priority_queue which has the same interface as TournamentTree
