@@ -116,7 +116,7 @@ void render_points_from_file(uint32_t grid_size, size_t num_slices, const char *
     std::cout << "Average radius: " << total_radius / num_points << std::endl;
 
     float box_size = 25.0f;
-    wenda::augment_vertices_periodic(vertices, box_size);
+    wenda::augment_vertices_periodic(vertices, {box_size, box_size, box_size});
     wenda::sort_vertices(vertices);
 
     std::cout << "Vertices after augmentation: " << vertices.size() << std::endl;

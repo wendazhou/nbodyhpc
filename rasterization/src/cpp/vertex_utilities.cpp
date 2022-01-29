@@ -10,9 +10,16 @@ void sort_vertices(tcb::span<Vertex> vertices) {
     });
 }
 
-void augment_vertices_periodic(std::vector<Vertex> &vertices, float box_size) {
+void augment_vertices_periodic(std::vector<Vertex> &vertices, std::array<float, 3> const& box_size) {
     for (int dim = 0; dim < 3; ++dim) {
         auto num_vertices = vertices.size();
+        auto box_size_dim = box_size[dim];
+
+        if (box_size_dim <= 0) {
+            // Negative box size indicates that the periodic boundary condition
+            // is not active for this dimension
+            continue;
+        }
 
         for (size_t i = 0; i < num_vertices; ++i) {
             auto vertex = vertices[i];
@@ -20,15 +27,15 @@ void augment_vertices_periodic(std::vector<Vertex> &vertices, float box_size) {
 
             auto pos_dim = vertex.position[dim];
 
-            if (pos_dim + radius > box_size) {
+            if (pos_dim + radius > box_size_dim) {
                 auto new_vertex = vertex;
-                new_vertex.position[dim] = pos_dim - box_size;
+                new_vertex.position[dim] = pos_dim - box_size_dim;
                 vertices.push_back(new_vertex);
             }
 
             if (pos_dim - radius < 0.0f) {
                 auto new_vertex = vertex;
-                new_vertex.position[dim] = pos_dim + box_size;
+                new_vertex.position[dim] = pos_dim + box_size_dim;
                 vertices.push_back(new_vertex);
             }
         }

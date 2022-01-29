@@ -2,6 +2,7 @@
 
 #include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>
+#include <pybind11/stl.h>
 
 #include "point_renderer.h"
 #include "vertex_utilities.h"
@@ -23,7 +24,7 @@ bool check_signals() {
 
 std::vector<wenda::vulkan::Vertex> assemble_vertices(
     py::array_t<float> const &positions, py::array_t<float> const &weights,
-    py::array_t<float> const &radii, float box_size, bool periodic) {
+    py::array_t<float> const &radii, std::array<float, 3> const& periodic) {
     if (positions.ndim() != 2 || positions.shape(1) != 3) {
         throw std::runtime_error("positions must be a 2D array of shape (N, 3)");
     }
@@ -60,8 +61,8 @@ std::vector<wenda::vulkan::Vertex> assemble_vertices(
         vertices[i].radius = radii_view(i);
     }
 
-    if (periodic) {
-        wenda::augment_vertices_periodic(vertices, box_size);
+    if (periodic[0] > 0 || periodic[1] > 0 || periodic[2] > 0) {
+        wenda::augment_vertices_periodic(vertices, periodic);
     }
 
     wenda::sort_vertices(vertices);
@@ -71,12 +72,12 @@ std::vector<wenda::vulkan::Vertex> assemble_vertices(
 
 py::array_t<float> render_points(
     wenda::vulkan::PointRenderer &renderer, py::array_t<float> positions, py::array_t<float> weight,
-    py::array_t<float> radii, float pixels_per_unit, bool periodic) {
+    py::array_t<float> radii, float pixels_per_unit, std::array<float, 3> const& periodic) {
 
     auto width = renderer.width();
     auto height = renderer.height();
 
-    std::vector<wenda::vulkan::Vertex> vertices = assemble_vertices(positions, weight, radii, width * pixels_per_unit, periodic);
+    std::vector<wenda::vulkan::Vertex> vertices = assemble_vertices(positions, weight, radii, periodic);
 
     float *result_data = new float[width * height];
 
@@ -96,13 +97,13 @@ py::array_t<float> render_points(
 
 py::array_t<float> render_points_volume(
     wenda::vulkan::PointRenderer &renderer, py::array_t<float> positions, py::array_t<float> weight,
-    py::array_t<float> radii, size_t num_slices, float pixels_per_unit, bool periodic) {
+    py::array_t<float> radii, size_t num_slices, float pixels_per_unit, std::array<float, 3> const& periodic) {
 
     float *result_data;
     size_t width = renderer.width();
     size_t height = renderer.height();
 
-    std::vector<wenda::vulkan::Vertex> vertices = assemble_vertices(positions, weight, radii, width * pixels_per_unit, periodic);
+    std::vector<wenda::vulkan::Vertex> vertices = assemble_vertices(positions, weight, radii, periodic);
 
     {
         py::gil_scoped_release release;
@@ -154,7 +155,7 @@ PYBIND11_MODULE(_impl, m) {
             py::arg("weight"),
             py::arg("radii"),
             py::arg("pixels_per_unit") = 1.0f,
-            py::arg("periodic") = false)
+            py::arg("periodic") = std::array<float, 3>{-1, -1, -1})
         .def(
             "render_points_volume",
             &render_points_volume,
@@ -163,5 +164,5 @@ PYBIND11_MODULE(_impl, m) {
             py::arg("radii"),
             py::arg("num_slices"),
             py::arg("pixels_per_unit") = 1.0f,
-            py::arg("periodic") = false);
+            py::arg("periodic") = std::array<float, 3>{-1, -1, -1});
 }

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "span.hpp"
+#include <array>
 #include <vector>
 
 namespace wenda {
@@ -17,7 +18,7 @@ struct Vertex {
  * in order to ensure that the periodic boundary conditions appear satisfied when rendering.
  *
  */
-void augment_vertices_periodic(std::vector<Vertex> &vertices, float box_size);
+void augment_vertices_periodic(std::vector<Vertex> &vertices, std::array<float, 3> const& box_size);
 
 /** Helper function for sorting vertices by z-coordinate.
  *
