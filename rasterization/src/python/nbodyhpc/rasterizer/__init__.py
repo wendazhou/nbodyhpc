@@ -83,6 +83,8 @@ def render_points_volume(positions: np.ndarray, weights: np.ndarray, radii: np.n
     num_slices : int, optional
         If not `None`, the number of slices to render (in the depth direction).
         Otherwise, sets the number of sizes to be the same as ``grid_size``.
+        Setting ``num_slices`` to a value less than ``grid_size`` corresponds to truncating
+        the rendered volume.
     periodic : bool
         If `True`, indicates that the box is to be considered to be periodic,
         and so balls should correspondingly wrap around the edges.

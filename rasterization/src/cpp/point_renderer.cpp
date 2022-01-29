@@ -861,9 +861,9 @@ void PointRenderer::render_points_volume(
         }
 
         // compute section of vertices that will be rendered in this pass.
-        float plane_depth = static_cast<float>((static_cast<double>(i) + 0.5) / num_slices * box_size);
-        float plane_lower = static_cast<float>(static_cast<double>(i) / num_slices * box_size);
-        float plane_upper = static_cast<float>(static_cast<double>(i + 1) / num_slices * box_size);
+        float plane_depth = static_cast<float>((static_cast<double>(i) + 0.5) / grid_size_ * box_size);
+        float plane_lower = static_cast<float>(static_cast<double>(i) / grid_size_ * box_size);
+        float plane_upper = static_cast<float>(static_cast<double>(i + 1) / grid_size_ * box_size);
 
         float plane_lower_bound = plane_lower - max_radius;
         float plane_upper_bound = plane_upper + max_radius;

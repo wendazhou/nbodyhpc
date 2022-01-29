@@ -41,7 +41,7 @@ public:
      * 
      * @param points The points to render.
      * @param box_size The size of the volume to render.
-     * @param num_slices The number of slices to use in the rendering.
+     * @param num_slices The number of slices to use in the rendering. If less than grid_size, only the front portion of the volume will be rendered.
      * @param result A span of size at least grid_size ** 3 to store the result.
      * @param should_stop Optional callback to check if the rendering should be interrupted or cancelled.
      * 
