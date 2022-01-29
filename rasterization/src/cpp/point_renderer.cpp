@@ -1,8 +1,5 @@
 #include "point_renderer.h"
 
-#include "shaders/triangle.frag.spv.h"
-#include "shaders/triangle.vert.spv.h"
-
 #include <fstream>
 #include <limits>
 #include <map>
@@ -10,6 +7,7 @@
 #include <queue>
 
 #include "thread_pool.hpp"
+#include "shaders.h"
 
 namespace wenda {
 namespace vulkan {
@@ -26,7 +24,7 @@ class PointRendererImpl {
 
 struct PointRenderingPushConstants {
     float box_size;
-    float grid_size;
+    float line_element;
     float plane_depth;
 };
 
@@ -184,18 +182,20 @@ PointRendererImpl make_point_renderer(VulkanContainer const &container, PointRen
     vk::raii::RenderPass renderPass = create_render_pass(device, vk::Format::eR32Sfloat);
 
     // load shaders
+    auto vertexShaderCode = wenda::vulkan::get_vertex_shader_bytecode();
     vk::raii::ShaderModule vertexShader(
         device,
         {
-            .codeSize = triangle_vert_spv_len,
-            .pCode = reinterpret_cast<uint32_t const *>(triangle_vert_spv),
+            .codeSize = vertexShaderCode.size(),
+            .pCode = reinterpret_cast<uint32_t const *>(vertexShaderCode.data()),
         });
 
+    auto fragmentShaderCode = wenda::vulkan::get_fragment_shader_bytecode();
     vk::raii::ShaderModule fragmentShader(
         device,
         {
-            .codeSize = triangle_frag_spv_len,
-            .pCode = reinterpret_cast<uint32_t const *>(triangle_frag_spv),
+            .codeSize = fragmentShaderCode.size(),
+            .pCode = reinterpret_cast<uint32_t const *>(fragmentShaderCode.data()),
         });
 
     vk::SpecializationMapEntry specializationEntries[] = {
@@ -514,7 +514,7 @@ void build_point_render_commands(
 
     PointRenderingPushConstants push_constants_data{
         .box_size = box_size,
-        .grid_size = static_cast<float>(width),
+        .line_element = static_cast<float>(static_cast<double>(width) / box_size),
         .plane_depth = plane_depth,
     };
 

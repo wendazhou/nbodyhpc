@@ -81,7 +81,7 @@ add_spirv_shader(shaders/triangle.vert)
 add_spirv_shader(shaders/triangle.frag)
 add_custom_target(shaders DEPENDS ${SPV_SHADERS} ${SPV_SHADERS_HEADERS})
 
-add_library(rasterizer STATIC src/cpp/vulkan_support.cpp src/cpp/point_renderer.cpp src/cpp/vertex_utilities.cpp)
+add_library(rasterizer STATIC src/cpp/vulkan_support.cpp src/cpp/point_renderer.cpp src/cpp/vertex_utilities.cpp src/cpp/shaders.cpp)
 target_link_libraries(rasterizer PUBLIC Vulkan::Vulkan)
 target_link_libraries(rasterizer PRIVATE ${CMAKE_DL_LIBS} Threads::Threads)
 target_include_directories(rasterizer PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})

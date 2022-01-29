@@ -16,13 +16,14 @@ out gl_PerVertex {
 
 layout(push_constant) uniform PushConsts {
 	float boxSize;		// size of the box (in arbitrary units)
-    float viewportSize; // size of the viewport (in pixels)
+    float lineElement;  // unit of distance in pixel
 	float planeDepth;   // depth of the current plane (in arbitrary units)
 } pushConsts;
 
 void main() 
 {
-	float line_element = pushConsts.viewportSize / pushConsts.boxSize;
+	// float line_element = pushConsts.viewportSize / pushConsts.boxSize;
+	float line_element = pushConsts.lineElement;
 
 	// compute effective radius of circle at given height
 	// this is also used to check whether the point is inside the plane being rendered.
