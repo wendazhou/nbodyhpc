@@ -15,7 +15,8 @@ out gl_PerVertex {
 };
 
 layout(push_constant) uniform PushConsts {
-	float boxSize;		// size of the box (in arbitrary units)
+	float width;		// width of the box (in arbitrary units)
+	float height;		// height of the box (in arbitrary units)
     float lineElement;  // unit of distance in pixel
 	float planeDepth;   // depth of the current plane (in arbitrary units)
 	float planeLower;   // lower boundary of the plane (in arbitrary units)
@@ -62,7 +63,8 @@ void main()
     	gl_PointSize = n_pixel_diameter + 2;
 	}
 
-	gl_Position = vec4(2 * (inPos.yx / pushConsts.boxSize - 0.5), 0.0, 1.0);
+	vec2 boxSize = vec2(pushConsts.width, pushConsts.height);
+	gl_Position = vec4(2 * (inPos.yx / boxSize - 0.5), 0.0, 1.0);
 	outRadiusSquared = out_radius * out_radius;
 	outPosition = vec3(inPos.yx, z_offset) * line_element;
 }

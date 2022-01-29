@@ -23,7 +23,8 @@ class PointRendererImpl {
 };
 
 struct PointRenderingPushConstants {
-    float box_size;
+    float width;
+    float height;
     float line_element;
     float plane_depth;
     float plane_lower;
@@ -473,7 +474,7 @@ void read_buffer_strided(
 void build_point_render_commands(
     vk::raii::CommandBuffer &command_buffer, PointRendererImpl const &renderer,
     vk::Framebuffer const &framebuffer, vk::Buffer const &vertex_buffer, uint32_t width,
-    uint32_t height, float box_size, float plane_depth, float plane_lower, float plane_upper,
+    uint32_t height, float pixels_per_unit, float plane_depth, float plane_lower, float plane_upper,
     uint32_t num_vertices, uint32_t first_vertex) {
 
     std::array<float, 4> clearColor = {0.0f, 0.0f, 0.0f, 1.0f};
@@ -521,8 +522,9 @@ void build_point_render_commands(
     command_buffer.bindVertexBuffers(0, {vertex_buffer}, {0});
 
     PointRenderingPushConstants push_constants_data{
-        .box_size = box_size,
-        .line_element = static_cast<float>(static_cast<double>(width) / box_size),
+        .width = width / pixels_per_unit,
+        .height = height / pixels_per_unit,
+        .line_element = pixels_per_unit,
         .plane_depth = plane_depth,
         .plane_lower = plane_lower,
         .plane_upper = plane_upper,
@@ -602,7 +604,7 @@ PointRenderer::PointRenderer(
 PointRenderer::~PointRenderer() {}
 
 void PointRenderer::render_points(
-    tcb::span<const Vertex> points, float box_size, tcb::span<float> result) {
+    tcb::span<const Vertex> points, float pixels_per_unit, tcb::span<float> result) {
     if (result.size() < width_ * height_) {
         throw std::runtime_error("result buffer too small");
     }
@@ -634,7 +636,7 @@ void PointRenderer::render_points(
         *vertex_buffer,
         width_,
         height_,
-        box_size,
+        pixels_per_unit,
         0.0f,
         -0.5f,
         0.5f,
@@ -821,7 +823,7 @@ class CommandBufferTracker {
 } // namespace
 
 void PointRenderer::render_points_volume(
-    tcb::span<const Vertex> points, float box_size, size_t num_slices, tcb::span<float> result,
+    tcb::span<const Vertex> points, float pixels_per_unit, size_t num_slices, tcb::span<float> result,
     std::function<bool()> const &should_stop) {
     if (result.size() < width_ * height_ * num_slices) {
         throw std::runtime_error("result buffer too small");
@@ -857,7 +859,7 @@ void PointRenderer::render_points_volume(
         std::max_element(points.begin(), points.end(), [](Vertex const &a, Vertex const &b) {
             return a.radius < b.radius;
         })->radius;
-    max_radius = std::max(max_radius, static_cast<float>(box_size) / width_);
+    max_radius = std::max(max_radius, 1 / pixels_per_unit) + 1e-6f;
 
     for (size_t i = 0; i < num_slices; ++i) {
         // obtain command buffer for this slice
@@ -873,9 +875,9 @@ void PointRenderer::render_points_volume(
         }
 
         // compute section of vertices that will be rendered in this pass.
-        float plane_depth = static_cast<float>((static_cast<double>(i) + 0.5) / width_ * box_size);
-        float plane_lower = static_cast<float>(static_cast<double>(i) / width_ * box_size);
-        float plane_upper = static_cast<float>(static_cast<double>(i + 1) / width_ * box_size);
+        float plane_depth = static_cast<float>((static_cast<double>(i) + 0.5) / pixels_per_unit);
+        float plane_lower = static_cast<float>(static_cast<double>(i) / pixels_per_unit);
+        float plane_upper = static_cast<float>(static_cast<double>(i + 1) / pixels_per_unit);
 
         float plane_lower_bound = plane_lower - max_radius;
         float plane_upper_bound = plane_upper + max_radius;
@@ -903,7 +905,7 @@ void PointRenderer::render_points_volume(
             *vertexBuffer,
             width_,
             height_,
-            box_size,
+            pixels_per_unit,
             plane_depth,
             plane_lower,
             plane_upper,

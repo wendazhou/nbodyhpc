@@ -71,51 +71,52 @@ std::vector<wenda::vulkan::Vertex> assemble_vertices(
 
 py::array_t<float> render_points(
     wenda::vulkan::PointRenderer &renderer, py::array_t<float> positions, py::array_t<float> weight,
-    py::array_t<float> radii, float box_size, bool periodic) {
+    py::array_t<float> radii, float pixels_per_unit, bool periodic) {
 
     auto width = renderer.width();
     auto height = renderer.height();
 
-    std::vector<wenda::vulkan::Vertex> vertices = assemble_vertices(positions, weight, radii, box_size, periodic);
+    std::vector<wenda::vulkan::Vertex> vertices = assemble_vertices(positions, weight, radii, width * pixels_per_unit, periodic);
 
     float *result_data = new float[width * height];
 
     {
         py::gil_scoped_release release;
-        renderer.render_points(vertices, box_size, {result_data, width * height});
+        renderer.render_points(vertices, pixels_per_unit, {result_data, width * height});
     }
 
     py::capsule free_result(result_data, [](void *ptr) { delete[] static_cast<float *>(ptr); });
 
     return py::array_t<float>(
-        {width, height},
-        {sizeof(float), width * sizeof(float)},
+        {height, width},
+        {sizeof(float), height * sizeof(float)},
         result_data,
         free_result);
 }
 
 py::array_t<float> render_points_volume(
     wenda::vulkan::PointRenderer &renderer, py::array_t<float> positions, py::array_t<float> weight,
-    py::array_t<float> radii, size_t num_slices, float box_size, bool periodic) {
-    std::vector<wenda::vulkan::Vertex> vertices = assemble_vertices(positions, weight, radii, box_size, periodic);
+    py::array_t<float> radii, size_t num_slices, float pixels_per_unit, bool periodic) {
 
     float *result_data;
     size_t width = renderer.width();
     size_t height = renderer.height();
 
+    std::vector<wenda::vulkan::Vertex> vertices = assemble_vertices(positions, weight, radii, width * pixels_per_unit, periodic);
+
     {
         py::gil_scoped_release release;
         result_data = new float[width * height * num_slices];
         renderer.render_points_volume(
-            vertices, box_size, num_slices,
+            vertices, pixels_per_unit, num_slices,
             {result_data, width * height * num_slices}, check_signals);
     }
 
     py::capsule free_result(result_data, [](void *ptr) { delete[] static_cast<float *>(ptr); });
 
     return py::array_t<float>(
-        {width, height, num_slices},
-        {sizeof(float), width * sizeof(float), width * height * sizeof(float)},
+        {height, width, num_slices},
+        {sizeof(float), height * sizeof(float), width * height * sizeof(float)},
         result_data,
         free_result);
 }
@@ -152,7 +153,7 @@ PYBIND11_MODULE(_impl, m) {
             py::arg("positions"),
             py::arg("weight"),
             py::arg("radii"),
-            py::arg("box_size") = 1.0f,
+            py::arg("pixels_per_unit") = 1.0f,
             py::arg("periodic") = false)
         .def(
             "render_points_volume",
@@ -161,6 +162,6 @@ PYBIND11_MODULE(_impl, m) {
             py::arg("weight"),
             py::arg("radii"),
             py::arg("num_slices"),
-            py::arg("box_size") = 1.0f,
+            py::arg("pixels_per_unit") = 1.0f,
             py::arg("periodic") = false);
 }

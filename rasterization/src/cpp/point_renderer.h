@@ -37,7 +37,7 @@ public:
 
     PointRenderer(PointRenderer&&) noexcept = default;
 
-    void render_points(tcb::span<const Vertex> points, float box_size, tcb::span<float> result);
+    void render_points(tcb::span<const Vertex> points, float pixels_per_unit, tcb::span<float> result);
 
     /** Render points in a volume.
      * 
@@ -48,7 +48,7 @@ public:
      * @param should_stop Optional callback to check if the rendering should be interrupted or cancelled.
      * 
      */
-    void render_points_volume(tcb::span<const Vertex> points, float box_size, size_t num_slices, tcb::span<float> result, std::function<bool()> const& should_stop = util::always_false);
+    void render_points_volume(tcb::span<const Vertex> points, float pixels_per_unit, size_t num_slices, tcb::span<float> result, std::function<bool()> const& should_stop = util::always_false);
 
     // Note: the point renderer internally works using transposed dimensions, as Vulkan uses C-style row-major layout,
     // whereas we wish to output Fortran-style column-major layout.

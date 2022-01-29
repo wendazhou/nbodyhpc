@@ -1,11 +1,20 @@
 from __future__ import annotations
 
 import functools
+from typing import Union, Tuple
 
 import numpy as np
 
 from ._impl import VulkanContainer as VulkanContainer
 from ._impl import PointRenderer as PointRenderer
+
+Extent2d = Union[int, Tuple[int, int]]
+
+def _normalize_extent(extent: Extent2d) -> Tuple[int, int]:
+    if isinstance(extent, int):
+        return extent, extent
+    else:
+        return extent
 
 
 @functools.lru_cache(maxsize=None)
@@ -22,17 +31,18 @@ def get_default_container():
 
 
 @functools.lru_cache(maxsize=None)
-def _get_point_renderer_impl(grid_size: int, subsample_factor: int=4, container: VulkanContainer=None) -> PointRenderer:
-    return PointRenderer(container, grid_size, grid_size, subsample_factor)
+def _get_point_renderer_impl(width: int, height: int, subsample_factor: int=4, container: VulkanContainer=None) -> PointRenderer:
+    return PointRenderer(container, width, height, subsample_factor)
 
 
-def get_point_renderer(grid_size: int, subsample_factor: int=4, container: VulkanContainer=None) -> PointRenderer:
+def get_point_renderer(grid_size: Extent2d, subsample_factor: int=4, container: VulkanContainer=None) -> PointRenderer:
     """Obtain an instance of point renderer with the given parameters.
 
     Parameters
     ----------
-    grid_size : int
-        The output grid size of the renderer.
+    grid_size : int or [int, int]
+        The output grid size of the renderer, either as a square grid, or a
+        tuple of width and height.
     subsample_factor : int
         The subsampling factor to use when rendering.
     container : VulkanContainer, optional
@@ -47,10 +57,12 @@ def get_point_renderer(grid_size: int, subsample_factor: int=4, container: Vulka
     """
     if container is None:
         container = get_default_container()
-    return _get_point_renderer_impl(grid_size, subsample_factor, container)
+
+    height, width = _normalize_extent(grid_size)
+    return _get_point_renderer_impl(width, height, subsample_factor, container)
 
 
-def render_points(positions: np.ndarray, weights: np.ndarray, radii: np.ndarray, box_size: float, grid_size: int, periodic: bool=False) -> np.ndarray:
+def render_points(positions: np.ndarray, weights: np.ndarray, radii: np.ndarray, pixels_per_unit: float, grid_size: Extent2d, periodic: bool=False) -> np.ndarray:
     """Render points in a given slice.
 
     Parameters
@@ -61,10 +73,10 @@ def render_points(positions: np.ndarray, weights: np.ndarray, radii: np.ndarray,
         The point will not be rendered if it is outside the slice.
     """
     renderer = get_point_renderer(grid_size)
-    return renderer.render_points(positions, weights, radii, box_size, periodic)
+    return renderer.render_points(positions, weights, radii, pixels_per_unit, periodic)
 
 
-def render_points_volume(positions: np.ndarray, weights: np.ndarray, radii: np.ndarray, box_size: float, grid_size: int, num_slices: int=None, periodic: bool=False, subsample_factor: int=4) -> np.ndarray:
+def render_points_volume(positions: np.ndarray, weights: np.ndarray, radii: np.ndarray, pixels_per_unit: float, grid_size: Extent2d, num_slices: int=None, periodic: bool=False, subsample_factor: int=4) -> np.ndarray:
     """Render points in a given volume.
 
     Parameters
@@ -76,8 +88,8 @@ def render_points_volume(positions: np.ndarray, weights: np.ndarray, radii: np.n
         Numpy array representing the weight of each point to render.
     radii : np.ndarray
         Numpy array representing the radius of each point to render.
-    box_size : float
-        Size of the box containing the data, defines the unit of length.
+    pixels_per_unit : float
+        Number of pixels per unit of position.
     grid_size : int
         Size of side of grid to use for rendering.
     num_slices : int, optional
@@ -99,7 +111,7 @@ def render_points_volume(positions: np.ndarray, weights: np.ndarray, radii: np.n
         Numpy array of shape (grid_size, grid_size, grid_size) containing the rendered image.
     """
     if num_slices is None:
-        num_slices = grid_size
+        num_slices, _ = _normalize_extent(grid_size)
 
     renderer = get_point_renderer(grid_size, subsample_factor)
-    return renderer.render_points_volume(positions, weights, radii, num_slices, box_size, periodic)
+    return renderer.render_points_volume(positions, weights, radii, num_slices, pixels_per_unit, periodic)
