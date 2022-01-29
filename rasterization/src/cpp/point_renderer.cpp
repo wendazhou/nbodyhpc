@@ -6,8 +6,8 @@
 #include <mutex>
 #include <queue>
 
-#include "thread_pool.hpp"
 #include "shaders.h"
+#include "thread_pool.hpp"
 
 namespace wenda {
 namespace vulkan {
@@ -39,11 +39,11 @@ struct RenderTargetData {
 
 RenderTargetData make_render_target_data(
     vk::raii::Device const &device, vk::raii::RenderPass const &render_pass,
-    vk::PhysicalDeviceMemoryProperties const &memory_properties, uint32_t size) {
+    vk::PhysicalDeviceMemoryProperties const &memory_properties, uint32_t width, uint32_t height) {
     vk::ImageCreateInfo image_info{
         .imageType = vk::ImageType::e2D,
         .format = vk::Format::eR32Sfloat,
-        .extent = {size, size, 1},
+        .extent = {width, height, 1},
         .mipLevels = 1,
         .arrayLayers = 1,
         .samples = vk::SampleCountFlagBits::e1,
@@ -75,8 +75,8 @@ RenderTargetData make_render_target_data(
             .renderPass = *render_pass,
             .attachmentCount = 1,
             .pAttachments = &(*target.view_),
-            .width = size,
-            .height = size,
+            .width = width,
+            .height = height,
             .layers = 1,
         });
 
@@ -85,25 +85,27 @@ RenderTargetData make_render_target_data(
 
 class RenderTarget : public RenderTargetData {
   public:
-    const uint32_t grid_size_;
+    const uint32_t width_;
+    const uint32_t height_;
 
     RenderTarget(
         vk::raii::Device const &device, vk::raii::RenderPass const &render_pass,
-        vk::PhysicalDeviceMemoryProperties const &memory_properties, uint32_t grid_size)
+        vk::PhysicalDeviceMemoryProperties const &memory_properties, uint32_t width,
+        uint32_t height)
         : RenderTargetData(
-              make_render_target_data(device, render_pass, memory_properties, grid_size)),
-          grid_size_(grid_size) {}
+              make_render_target_data(device, render_pass, memory_properties, width, height)),
+          width_(width), height_(height) {}
 };
 
 MemoryBackedImage make_transfer_image(
     vk::raii::Device const &device, vk::PhysicalDeviceMemoryProperties const &memory_properties,
-    uint32_t grid_size) {
+    uint32_t width, uint32_t height) {
     return MemoryBackedImage(
         device,
         {
             .imageType = vk::ImageType::e2D,
             .format = vk::Format::eR32Sfloat,
-            .extent = {grid_size, grid_size, 1},
+            .extent = {width, height, 1},
             .mipLevels = 1,
             .arrayLayers = 1,
             .samples = vk::SampleCountFlagBits::e1,
@@ -174,12 +176,13 @@ vk::raii::RenderPass create_render_pass(vk::raii::Device const &device, vk::Form
     return vk::raii::RenderPass(device, renderPassCreateInfo);
 }
 
-PointRendererImpl make_point_renderer(VulkanContainer const &container, PointRendererConfiguration const &config) {
+PointRendererImpl
+make_point_renderer(VulkanContainer const &container, PointRendererConfiguration const &config) {
     auto &device = container.device_;
     auto memory_properties = container.physical_device_.getMemoryProperties();
 
-    uint32_t width = config.grid_size;
-    uint32_t height = config.grid_size;
+    uint32_t width = config.width;
+    uint32_t height = config.height;
 
     vk::raii::RenderPass renderPass = create_render_pass(device, vk::Format::eR32Sfloat);
 
@@ -442,7 +445,7 @@ stage_to_vertex_buffer(VulkanContainer const &container, tcb::span<const Vertex>
 
 template <typename It>
 void read_buffer_strided(
-    vk::raii::DeviceMemory const &memory, It output, size_t grid_size,
+    vk::raii::DeviceMemory const &memory, It output, size_t width, size_t height,
     vk::SubresourceLayout const &layout) {
     typedef typename std::iterator_traits<It>::value_type T;
 
@@ -450,11 +453,11 @@ void read_buffer_strided(
 
     T *data = static_cast<T *>(memory.mapMemory(0, VK_WHOLE_SIZE)) + layout.offset;
 
-    for (size_t y = 0; y < grid_size; ++y) {
+    for (size_t y = 0; y < height; ++y) {
         std::copy(
             data + y * row_pitch_elements,
-            data + y * row_pitch_elements + grid_size,
-            output + y * grid_size);
+            data + y * row_pitch_elements + width,
+            output + y * width);
     }
 
     memory.unmapMemory();
@@ -465,11 +468,9 @@ void read_buffer_strided(
  */
 void build_point_render_commands(
     vk::raii::CommandBuffer &command_buffer, PointRendererImpl const &renderer,
-    vk::Framebuffer const &framebuffer, vk::Buffer const &vertex_buffer, uint32_t grid_size,
-    float box_size, float plane_depth, float plane_lower, float plane_upper,
+    vk::Framebuffer const &framebuffer, vk::Buffer const &vertex_buffer, uint32_t width,
+    uint32_t height, float box_size, float plane_depth, float plane_lower, float plane_upper,
     uint32_t num_vertices, uint32_t first_vertex) {
-    uint32_t width = grid_size;
-    uint32_t height = grid_size;
 
     std::array<float, 4> clearColor = {0.0f, 0.0f, 0.0f, 1.0f};
 
@@ -566,7 +567,7 @@ void build_image_transfer_command(
         {vk::ImageCopy{
             .srcSubresource = {vk::ImageAspectFlagBits::eColor, 0, 0, 1},
             .dstSubresource = {vk::ImageAspectFlagBits::eColor, 0, 0, 1},
-            .extent = {render_target.grid_size_, render_target.grid_size_, 1},
+            .extent = {render_target.width_, render_target.height_, 1},
         }});
 
     command_buffer.pipelineBarrier(
@@ -587,14 +588,16 @@ void build_image_transfer_command(
 
 } // namespace
 
-PointRenderer::PointRenderer(VulkanContainer const &container, PointRendererConfiguration const &config)
+PointRenderer::PointRenderer(
+    VulkanContainer const &container, PointRendererConfiguration const &config)
     : impl_(std::make_unique<PointRendererImpl>(make_point_renderer(container, config))),
-      container_(container), grid_size_(config.grid_size) {}
+      container_(container), width_(config.width), height_(config.height) {}
 
 PointRenderer::~PointRenderer() {}
 
-void PointRenderer::render_points(tcb::span<const Vertex> points, float box_size, tcb::span<float> result) {
-    if (result.size() < grid_size_ * grid_size_) {
+void PointRenderer::render_points(
+    tcb::span<const Vertex> points, float box_size, tcb::span<float> result) {
+    if (result.size() < width_ * height_) {
         throw std::runtime_error("result buffer too small");
     }
 
@@ -604,8 +607,9 @@ void PointRenderer::render_points(tcb::span<const Vertex> points, float box_size
     // set-up framebuffer
     auto memory_properties = container_.physical_device_.getMemoryProperties();
     RenderTarget render_target(
-        container_.device_, impl_->render_pass_, memory_properties, grid_size_);
-    auto transfer_image = make_transfer_image(container_.device_, memory_properties, grid_size_);
+        container_.device_, impl_->render_pass_, memory_properties, width_, height_);
+    auto transfer_image =
+        make_transfer_image(container_.device_, memory_properties, width_, height_);
 
     vk::raii::CommandBuffers command_buffers(
         container_.device_,
@@ -614,8 +618,6 @@ void PointRenderer::render_points(tcb::span<const Vertex> points, float box_size
             .commandBufferCount = 1,
         });
     auto &command_buffer = command_buffers[0];
-    uint32_t width = grid_size_;
-    uint32_t height = grid_size_;
 
     command_buffer.begin({});
 
@@ -624,7 +626,8 @@ void PointRenderer::render_points(tcb::span<const Vertex> points, float box_size
         *impl_,
         *render_target.framebuffer_,
         *vertex_buffer,
-        grid_size_,
+        width_,
+        height_,
         box_size,
         0.0f,
         -0.5f,
@@ -642,7 +645,7 @@ void PointRenderer::render_points(tcb::span<const Vertex> points, float box_size
 
     vk::SubresourceLayout dstImageLayout =
         transfer_image.image_.getSubresourceLayout({vk::ImageAspectFlagBits::eColor, 0, 0});
-    read_buffer_strided(transfer_image.memory_, result.data(), grid_size_, dstImageLayout);
+    read_buffer_strided(transfer_image.memory_, result.data(), width_, height_, dstImageLayout);
 }
 
 namespace {
@@ -659,10 +662,10 @@ class TransferImagePool {
   public:
     TransferImagePool(
         vk::raii::Device const &device, vk::PhysicalDeviceMemoryProperties const &memory_properties,
-        uint32_t grid_size, uint32_t num_images) {
+        uint32_t width, uint32_t height, uint32_t num_images) {
 
         for (uint32_t i = 0; i < num_images; ++i) {
-            images_.push(make_transfer_image(device, memory_properties, grid_size));
+            images_.push(make_transfer_image(device, memory_properties, width, height));
         }
     }
 
@@ -709,7 +712,8 @@ class CommandBufferTracker {
 
   public:
     CommandBufferTracker(
-        VulkanContainer const &container, vk::raii::RenderPass const &render_pass, uint32_t grid_size)
+        VulkanContainer const &container, vk::raii::RenderPass const &render_pass, uint32_t width,
+        uint32_t height)
         : device_(container.device_), queues_(container.queues_.size()) {
 
         for (int i = 0; i < queues_.size(); ++i) {
@@ -725,7 +729,8 @@ class CommandBufferTracker {
                 container.device_,
                 render_pass,
                 container.physical_device_.getMemoryProperties(),
-                grid_size);
+                width,
+                height);
             available_pairs_.push({i});
         }
     }
@@ -812,7 +817,7 @@ class CommandBufferTracker {
 void PointRenderer::render_points_volume(
     tcb::span<const Vertex> points, float box_size, size_t num_slices, tcb::span<float> result,
     std::function<bool()> const &should_stop) {
-    if (result.size() < grid_size_ * grid_size_ * num_slices) {
+    if (result.size() < width_ * height_ * num_slices) {
         throw std::runtime_error("result buffer too small");
     }
 
@@ -827,7 +832,8 @@ void PointRenderer::render_points_volume(
     TransferImagePool transfer_images(
         container_.device_,
         container_.physical_device_.getMemoryProperties(),
-        grid_size_,
+        width_,
+        height_,
         num_parallel_transfers);
     thread_pool pool(num_parallel_transfers);
 
@@ -835,7 +841,7 @@ void PointRenderer::render_points_volume(
     std::mutex transfer_images_map_mutex;
 
     // Set-up resources for multiple submissions in flight.
-    CommandBufferTracker command_buffers(container_, impl_->render_pass_, grid_size_);
+    CommandBufferTracker command_buffers(container_, impl_->render_pass_, width_, height_);
 
     // set-up vertex buffer
     auto const [vertexBuffer, vertexBufferMemory] = stage_to_vertex_buffer(container_, points);
@@ -845,7 +851,7 @@ void PointRenderer::render_points_volume(
         std::max_element(points.begin(), points.end(), [](Vertex const &a, Vertex const &b) {
             return a.radius < b.radius;
         })->radius;
-    max_radius = std::max(max_radius, static_cast<float>(box_size) / grid_size_);
+    max_radius = std::max(max_radius, static_cast<float>(box_size) / width_);
 
     for (size_t i = 0; i < num_slices; ++i) {
         // obtain command buffer for this slice
@@ -861,9 +867,9 @@ void PointRenderer::render_points_volume(
         }
 
         // compute section of vertices that will be rendered in this pass.
-        float plane_depth = static_cast<float>((static_cast<double>(i) + 0.5) / grid_size_ * box_size);
-        float plane_lower = static_cast<float>(static_cast<double>(i) / grid_size_ * box_size);
-        float plane_upper = static_cast<float>(static_cast<double>(i + 1) / grid_size_ * box_size);
+        float plane_depth = static_cast<float>((static_cast<double>(i) + 0.5) / width_ * box_size);
+        float plane_lower = static_cast<float>(static_cast<double>(i) / width_ * box_size);
+        float plane_upper = static_cast<float>(static_cast<double>(i + 1) / width_ * box_size);
 
         float plane_lower_bound = plane_lower - max_radius;
         float plane_upper_bound = plane_upper + max_radius;
@@ -892,7 +898,8 @@ void PointRenderer::render_points_volume(
             *impl_,
             *render_target.framebuffer_,
             *vertexBuffer,
-            grid_size_,
+            width_,
+            height_,
             box_size,
             plane_depth,
             plane_lower,
@@ -922,8 +929,9 @@ void PointRenderer::render_points_volume(
                     {vk::ImageAspectFlagBits::eColor, 0, 0});
                 read_buffer_strided(
                     transfer_image->memory_,
-                    result.data() + i * grid_size_ * grid_size_,
-                    grid_size_,
+                    result.data() + i * width_ * height_,
+                    width_,
+                    height_,
                     dstImageLayout);
                 transfer_images.return_image(std::move(*transfer_image));
             });

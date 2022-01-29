@@ -35,7 +35,7 @@ std::vector<float>
 render_vertices(float box_size, uint32_t grid_size, size_t num_slices, std::vector<wenda::vulkan::Vertex> vertices) {
     // Create Vulkan instance, context + device
     wenda::vulkan::VulkanContainer vulkan(false);
-    wenda::vulkan::PointRenderer renderer(vulkan, {.grid_size = grid_size, .subsample_factor = 4});
+    wenda::vulkan::PointRenderer renderer(vulkan, {.width = grid_size, .height = grid_size, .subsample_factor = 4});
 
     std::vector<float> result(static_cast<size_t>(grid_size) * grid_size * num_slices);
 

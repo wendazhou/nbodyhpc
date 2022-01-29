@@ -23,7 +23,7 @@ def get_default_container():
 
 @functools.lru_cache(maxsize=None)
 def _get_point_renderer_impl(grid_size: int, subsample_factor: int=4, container: VulkanContainer=None) -> PointRenderer:
-    return PointRenderer(container, grid_size, subsample_factor)
+    return PointRenderer(container, grid_size, grid_size, subsample_factor)
 
 
 def get_point_renderer(grid_size: int, subsample_factor: int=4, container: VulkanContainer=None) -> PointRenderer:

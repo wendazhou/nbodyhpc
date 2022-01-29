@@ -73,22 +73,23 @@ py::array_t<float> render_points(
     wenda::vulkan::PointRenderer &renderer, py::array_t<float> positions, py::array_t<float> weight,
     py::array_t<float> radii, float box_size, bool periodic) {
 
-    auto grid_size = renderer.grid_size();
+    auto width = renderer.width();
+    auto height = renderer.height();
 
     std::vector<wenda::vulkan::Vertex> vertices = assemble_vertices(positions, weight, radii, box_size, periodic);
 
-    float *result_data = new float[grid_size * grid_size];
+    float *result_data = new float[width * height];
 
     {
         py::gil_scoped_release release;
-        renderer.render_points(vertices, box_size, {result_data, grid_size * grid_size});
+        renderer.render_points(vertices, box_size, {result_data, width * height});
     }
 
     py::capsule free_result(result_data, [](void *ptr) { delete[] static_cast<float *>(ptr); });
 
     return py::array_t<float>(
-        {(int)grid_size, (int)grid_size},
-        {(int)grid_size * sizeof(float), sizeof(float)},
+        {(int)width, (int)height},
+        {(int)width * sizeof(float), sizeof(float)},
         result_data,
         free_result);
 }
@@ -99,21 +100,22 @@ py::array_t<float> render_points_volume(
     std::vector<wenda::vulkan::Vertex> vertices = assemble_vertices(positions, weight, radii, box_size, periodic);
 
     float *result_data;
-    size_t grid_size = renderer.grid_size();
+    size_t width = renderer.width();
+    size_t height = renderer.height();
 
     {
         py::gil_scoped_release release;
-        result_data = new float[grid_size * grid_size * grid_size];
+        result_data = new float[width * height * num_slices];
         renderer.render_points_volume(
             vertices, box_size, num_slices,
-            {result_data, grid_size * grid_size * grid_size}, check_signals);
+            {result_data, width * height * num_slices}, check_signals);
     }
 
     py::capsule free_result(result_data, [](void *ptr) { delete[] static_cast<float *>(ptr); });
 
     return py::array_t<float>(
-        {grid_size, grid_size, grid_size},
-        {grid_size * grid_size * sizeof(float), grid_size * sizeof(float), sizeof(float)},
+        {width, height, num_slices},
+        {width * sizeof(float), sizeof(float), width * height * sizeof(float)},
         result_data,
         free_result);
 }
@@ -129,18 +131,21 @@ PYBIND11_MODULE(_impl, m) {
     py::class_<wenda::vulkan::PointRenderer>(m, "PointRenderer")
         .def(
             py::init([](wenda::vulkan::VulkanContainer const &container,
-                        uint32_t grid_size,
+                        uint32_t width, uint32_t height,
                         uint32_t subsample_factor) {
                 return new wenda::vulkan::PointRenderer(
                     container,
-                    {.grid_size = grid_size,
+                    {.width = width,
+                     .height = height,
                      .subsample_factor = subsample_factor});
             }),
             py::arg("container"),
-            py::arg("grid_size"),
+            py::arg("width"),
+            py::arg("height"),
             py::arg("subsample_factor") = 4,
             py::keep_alive<1, 2>{})
-        .def_property_readonly("grid_size", &wenda::vulkan::PointRenderer::grid_size)
+        .def_property_readonly("width", &wenda::vulkan::PointRenderer::width)
+        .def_property_readonly("height", &wenda::vulkan::PointRenderer::height)
         .def(
             "render_points",
             &render_points,

@@ -20,7 +20,8 @@ class PointRendererImpl;
 using Vertex = wenda::Vertex;
 
 struct PointRendererConfiguration {
-    size_t grid_size;
+    size_t width;
+    size_t height;
     uint32_t subsample_factor = 4;
 };
 
@@ -28,7 +29,8 @@ class PointRenderer {
     std::unique_ptr<PointRendererImpl> impl_;
     VulkanContainer const& container_;
 
-    size_t grid_size_;
+    size_t width_;
+    size_t height_;
 public:
     PointRenderer(VulkanContainer const& container, PointRendererConfiguration const& config);
     ~PointRenderer();
@@ -48,7 +50,8 @@ public:
      */
     void render_points_volume(tcb::span<const Vertex> points, float box_size, size_t num_slices, tcb::span<float> result, std::function<bool()> const& should_stop = util::always_false);
 
-    size_t grid_size() const noexcept { return grid_size_; }
+    size_t height() const noexcept { return height_; }
+    size_t width() const noexcept { return width_; }
 };
 
 } // namespace vulkan
