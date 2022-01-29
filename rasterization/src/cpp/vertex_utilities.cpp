@@ -11,13 +11,13 @@ void sort_vertices(tcb::span<Vertex> vertices) {
 }
 
 void augment_vertices_periodic(std::vector<Vertex> &vertices, float box_size) {
-    auto num_vertices = vertices.size();
+    for (int dim = 0; dim < 3; ++dim) {
+        auto num_vertices = vertices.size();
 
-    for (size_t i = 0; i < num_vertices; ++i) {
-        auto vertex = vertices[i];
-        auto radius = vertex.radius;
+        for (size_t i = 0; i < num_vertices; ++i) {
+            auto vertex = vertices[i];
+            auto radius = vertex.radius;
 
-        for (int dim = 0; dim < 3; ++dim) {
             auto pos_dim = vertex.position[dim];
 
             if (pos_dim + radius > box_size) {
