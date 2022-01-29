@@ -64,7 +64,7 @@ void main()
 	}
 
 	vec2 boxSize = vec2(pushConsts.width, pushConsts.height);
-	gl_Position = vec4(2 * (inPos.yx / boxSize - 0.5), 0.0, 1.0);
+	gl_Position = vec4(2 * (inPos.xy / boxSize - 0.5), 0.0, 1.0);
 	outRadiusSquared = out_radius * out_radius;
-	outPosition = vec3(inPos.yx, z_offset) * line_element;
+	outPosition = vec3(inPos.xy, z_offset) * line_element;
 }
