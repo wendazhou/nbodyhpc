@@ -50,6 +50,20 @@ def get_point_renderer(grid_size: int, subsample_factor: int=4, container: Vulka
     return _get_point_renderer_impl(grid_size, subsample_factor, container)
 
 
+def render_points(positions: np.ndarray, weights: np.ndarray, radii: np.ndarray, box_size: float, grid_size: int, periodic: bool=False) -> np.ndarray:
+    """Render points in a given slice.
+
+    Parameters
+    ----------
+    positions : np.ndarray
+        Numpy array of shape (N, 3) representing the positions of the points to render.
+        Note that these are still 3-d positions, and the z-coordinate will be taken into account.
+        The point will not be rendered if it is outside the slice.
+    """
+    renderer = get_point_renderer(grid_size)
+    return renderer.render_points(positions, weights, radii, box_size, periodic)
+
+
 def render_points_volume(positions: np.ndarray, weights: np.ndarray, radii: np.ndarray, box_size: float, grid_size: int, periodic: bool=False, subsample_factor: int=4) -> np.ndarray:
     """Render points in a given volume.
 

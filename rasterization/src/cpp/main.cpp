@@ -37,7 +37,7 @@ render_vertices(float box_size, uint32_t grid_size, std::vector<wenda::vulkan::V
     wenda::vulkan::VulkanContainer vulkan(false);
     wenda::vulkan::PointRenderer renderer(vulkan, {.grid_size = grid_size, .subsample_factor = 4});
 
-    std::vector<float> result(grid_size * grid_size * grid_size);
+    std::vector<float> result(static_cast<size_t>(grid_size) * grid_size * grid_size);
 
     std::cout << "Start rendering volume" << std::endl;
     auto start_time = std::chrono::high_resolution_clock::now();
@@ -50,20 +50,20 @@ render_vertices(float box_size, uint32_t grid_size, std::vector<wenda::vulkan::V
     return result;
 }
 
-void render_single_sphere(uint32_t grid_size) {
+void render_single_sphere(size_t grid_size) {
     // prepare vertex data
     std::vector<wenda::vulkan::Vertex> vertices = {
-        {{0.5f, 0.5f, 0.5f}, {1.0f}, 0.25f},
+        {{0.5f, 0.5f, 0.5f}, {1.0f}, 0.0f},
     };
 
     // Create Vulkan instance, context + device
-    auto result = render_vertices(1.0f, grid_size, vertices);
+    auto result = render_vertices(1.0f, static_cast<uint32_t>(grid_size), vertices);
 
-    auto total_sum = std::reduce(result.begin(), result.end(), 0.0);
+    auto total_sum = std::reduce(result.begin(), result.end(), 0.0, std::plus<double>());
     std::cout << "Total weight: " << total_sum << std::endl;
 
     auto total_pixels = std::transform_reduce(
-        result.begin(), result.end(), 0u, std::plus<>{}, [](float v) { return v > 0.0f ? 1u : 0u; });
+        result.begin(), result.end(), 0u, std::plus<>{}, [](float v) { return v > 0.0f ? 1ul : 0ul; });
     std::cout << "Proportion pixels: " << static_cast<double>(total_pixels) / (grid_size * grid_size * grid_size) << std::endl;
 
     auto central_pixel = result[grid_size * grid_size * grid_size / 2 + grid_size * grid_size / 2 + grid_size / 2];
@@ -141,7 +141,7 @@ void render_points_from_file(uint32_t grid_size, const char *filepath) {
 }
 
 int main(int argc, char *argv[]) {
-    uint32_t grid_size = 512;
+    uint32_t grid_size = 2048;
 
     if (argc > 1) {
         grid_size = std::stoi(argv[1]);

@@ -18,6 +18,8 @@ layout(push_constant) uniform PushConsts {
 	float boxSize;		// size of the box (in arbitrary units)
     float lineElement;  // unit of distance in pixel
 	float planeDepth;   // depth of the current plane (in arbitrary units)
+	float planeLower;   // lower boundary of the plane (in arbitrary units)
+	float planeUpper;   // upper boundary of the plane (in arbitrary units)
 } pushConsts;
 
 void main() 
@@ -48,7 +50,7 @@ void main()
 		float z_distance = z_offset * line_element;
 
 		// break ties by choosing lower pixel
-		if (z_distance > 0.5 || z_distance <= -0.5) {
+		if (inPos.z <= pushConsts.planeLower || inPos.z > pushConsts.planeUpper) {
 			gl_ClipDistance[0] = -1;
 			return;
 		}
@@ -63,5 +65,5 @@ void main()
 
 	gl_Position = vec4(2 * (inPos.xy / pushConsts.boxSize - 0.5), 0.0, 1.0);
 	outRadiusSquared = out_radius * out_radius;
-	outPosition = vec3(inPos.xy, inPos.z - pushConsts.planeDepth) * line_element;
+	outPosition = vec3(inPos.xy, z_offset) * line_element;
 }

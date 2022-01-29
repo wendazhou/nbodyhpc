@@ -26,6 +26,8 @@ struct PointRenderingPushConstants {
     float box_size;
     float line_element;
     float plane_depth;
+    float plane_lower;
+    float plane_upper;
 };
 
 namespace {
@@ -464,7 +466,8 @@ void read_buffer_strided(
 void build_point_render_commands(
     vk::raii::CommandBuffer &command_buffer, PointRendererImpl const &renderer,
     vk::Framebuffer const &framebuffer, vk::Buffer const &vertex_buffer, uint32_t grid_size,
-    float box_size, float plane_depth, uint32_t num_vertices, uint32_t first_vertex) {
+    float box_size, float plane_depth, float plane_lower, float plane_upper,
+    uint32_t num_vertices, uint32_t first_vertex) {
     uint32_t width = grid_size;
     uint32_t height = grid_size;
 
@@ -516,6 +519,8 @@ void build_point_render_commands(
         .box_size = box_size,
         .line_element = static_cast<float>(static_cast<double>(width) / box_size),
         .plane_depth = plane_depth,
+        .plane_lower = plane_lower,
+        .plane_upper = plane_upper,
     };
 
     command_buffer.pushConstants<char>(
@@ -622,6 +627,8 @@ void PointRenderer::render_points(tcb::span<const Vertex> points, float box_size
         grid_size_,
         box_size,
         0.0f,
+        -0.5f,
+        0.5f,
         points.size(),
         0);
     build_image_transfer_command(command_buffer, render_target, transfer_image);
@@ -805,7 +812,7 @@ class CommandBufferTracker {
 void PointRenderer::render_points_volume(
     tcb::span<const Vertex> points, float box_size, tcb::span<float> result,
     std::function<bool()> const &should_stop) {
-    if (result.size() < grid_size_ * grid_size_ * grid_size_) {
+    if (result.size() < static_cast<size_t>(grid_size_) * grid_size_ * grid_size_) {
         throw std::runtime_error("result buffer too small");
     }
 
@@ -833,10 +840,12 @@ void PointRenderer::render_points_volume(
     // set-up vertex buffer
     auto const [vertexBuffer, vertexBufferMemory] = stage_to_vertex_buffer(container_, points);
 
+    // Compute maximum radius to speed up search
     float max_radius =
         std::max_element(points.begin(), points.end(), [](Vertex const &a, Vertex const &b) {
             return a.radius < b.radius;
         })->radius;
+    max_radius = std::max(max_radius, static_cast<float>(box_size) / grid_size_);
 
     for (int i = 0; i < grid_size_; ++i) {
         // obtain command buffer for this slice
@@ -852,9 +861,12 @@ void PointRenderer::render_points_volume(
         }
 
         // compute section of vertices that will be rendered in this pass.
-        float plane_depth = (static_cast<float>(i) + 0.5f) / grid_size_ * box_size;
-        float plane_lower_bound = static_cast<float>(i) * box_size / grid_size_ - max_radius;
-        float plane_upper_bound = static_cast<float>(i + 1) * box_size / grid_size_ + max_radius;
+        float plane_depth = static_cast<float>((static_cast<double>(i) + 0.5) / grid_size_ * box_size);
+        float plane_lower = static_cast<float>(static_cast<double>(i) / grid_size_ * box_size);
+        float plane_upper = static_cast<float>(static_cast<double>(i + 1) / grid_size_ * box_size);
+
+        float plane_lower_bound = plane_lower - max_radius;
+        float plane_upper_bound = plane_upper + max_radius;
 
         auto it_start = std::lower_bound(
             points.begin(), points.end(), plane_lower_bound, [](Vertex const &v, float b) {
@@ -868,6 +880,9 @@ void PointRenderer::render_points_volume(
         uint32_t vertex_start = std::distance(points.begin(), it_start);
         uint32_t vertex_end = std::distance(points.begin(), it_end);
 
+        vertex_start = 0;
+        vertex_end = points.size();
+
         auto transfer_image = transfer_images.get_image();
 
         command_buffer.begin({});
@@ -880,6 +895,8 @@ void PointRenderer::render_points_volume(
             grid_size_,
             box_size,
             plane_depth,
+            plane_lower,
+            plane_upper,
             vertex_end - vertex_start,
             vertex_start);
         build_image_transfer_command(command_buffer, render_target, transfer_image);

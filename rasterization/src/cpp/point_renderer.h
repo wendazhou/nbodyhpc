@@ -36,6 +36,15 @@ public:
     PointRenderer(PointRenderer&&) noexcept = default;
 
     void render_points(tcb::span<const Vertex> points, float box_size, tcb::span<float> result);
+
+    /** Render points in a volume.
+     * 
+     * @param points The points to render.
+     * @param box_size The size of the volume to render.
+     * @param result A span of size at least grid_size ** 3 to store the result.
+     * @param should_stop Optional callback to check if the rendering should be interrupted or cancelled.
+     * 
+     */
     void render_points_volume(tcb::span<const Vertex> points, float box_size, tcb::span<float> result, std::function<bool()> const& should_stop = util::always_false);
 
     uint32_t grid_size() const noexcept { return grid_size_; }
