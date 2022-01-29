@@ -20,7 +20,7 @@ class PointRendererImpl;
 using Vertex = wenda::Vertex;
 
 struct PointRendererConfiguration {
-    uint32_t grid_size;
+    size_t grid_size;
     uint32_t subsample_factor = 4;
 };
 
@@ -28,7 +28,7 @@ class PointRenderer {
     std::unique_ptr<PointRendererImpl> impl_;
     VulkanContainer const& container_;
 
-    uint32_t grid_size_;
+    size_t grid_size_;
 public:
     PointRenderer(VulkanContainer const& container, PointRendererConfiguration const& config);
     ~PointRenderer();
@@ -41,13 +41,14 @@ public:
      * 
      * @param points The points to render.
      * @param box_size The size of the volume to render.
+     * @param num_slices The number of slices to use in the rendering.
      * @param result A span of size at least grid_size ** 3 to store the result.
      * @param should_stop Optional callback to check if the rendering should be interrupted or cancelled.
      * 
      */
-    void render_points_volume(tcb::span<const Vertex> points, float box_size, tcb::span<float> result, std::function<bool()> const& should_stop = util::always_false);
+    void render_points_volume(tcb::span<const Vertex> points, float box_size, size_t num_slices, tcb::span<float> result, std::function<bool()> const& should_stop = util::always_false);
 
-    uint32_t grid_size() const noexcept { return grid_size_; }
+    size_t grid_size() const noexcept { return grid_size_; }
 };
 
 } // namespace vulkan

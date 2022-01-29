@@ -442,7 +442,7 @@ stage_to_vertex_buffer(VulkanContainer const &container, tcb::span<const Vertex>
 
 template <typename It>
 void read_buffer_strided(
-    vk::raii::DeviceMemory const &memory, It output, uint32_t grid_size,
+    vk::raii::DeviceMemory const &memory, It output, size_t grid_size,
     vk::SubresourceLayout const &layout) {
     typedef typename std::iterator_traits<It>::value_type T;
 
@@ -450,7 +450,7 @@ void read_buffer_strided(
 
     T *data = static_cast<T *>(memory.mapMemory(0, VK_WHOLE_SIZE)) + layout.offset;
 
-    for (int y = 0; y < grid_size; ++y) {
+    for (size_t y = 0; y < grid_size; ++y) {
         std::copy(
             data + y * row_pitch_elements,
             data + y * row_pitch_elements + grid_size,
@@ -810,14 +810,14 @@ class CommandBufferTracker {
 } // namespace
 
 void PointRenderer::render_points_volume(
-    tcb::span<const Vertex> points, float box_size, tcb::span<float> result,
+    tcb::span<const Vertex> points, float box_size, size_t num_slices, tcb::span<float> result,
     std::function<bool()> const &should_stop) {
-    if (result.size() < static_cast<size_t>(grid_size_) * grid_size_ * grid_size_) {
+    if (result.size() < grid_size_ * grid_size_ * num_slices) {
         throw std::runtime_error("result buffer too small");
     }
 
     auto num_parallel_transfers =
-        std::min({uint32_t(std::thread::hardware_concurrency()), uint32_t(grid_size_)});
+        std::min({uint32_t(std::thread::hardware_concurrency()), uint32_t(num_slices)});
     if (num_parallel_transfers == 0) {
         num_parallel_transfers = 1;
     }
@@ -847,7 +847,7 @@ void PointRenderer::render_points_volume(
         })->radius;
     max_radius = std::max(max_radius, static_cast<float>(box_size) / grid_size_);
 
-    for (int i = 0; i < grid_size_; ++i) {
+    for (size_t i = 0; i < num_slices; ++i) {
         // obtain command buffer for this slice
         if (!command_buffers.has_command_buffer()) {
             // wait for at least a single command buffer
@@ -861,9 +861,9 @@ void PointRenderer::render_points_volume(
         }
 
         // compute section of vertices that will be rendered in this pass.
-        float plane_depth = static_cast<float>((static_cast<double>(i) + 0.5) / grid_size_ * box_size);
-        float plane_lower = static_cast<float>(static_cast<double>(i) / grid_size_ * box_size);
-        float plane_upper = static_cast<float>(static_cast<double>(i + 1) / grid_size_ * box_size);
+        float plane_depth = static_cast<float>((static_cast<double>(i) + 0.5) / num_slices * box_size);
+        float plane_lower = static_cast<float>(static_cast<double>(i) / num_slices * box_size);
+        float plane_upper = static_cast<float>(static_cast<double>(i + 1) / num_slices * box_size);
 
         float plane_lower_bound = plane_lower - max_radius;
         float plane_upper_bound = plane_upper + max_radius;

@@ -32,16 +32,16 @@ void save_png_grayscale(tcb::span<float> data, uint32_t grid_size, std::string c
 }
 
 std::vector<float>
-render_vertices(float box_size, uint32_t grid_size, std::vector<wenda::vulkan::Vertex> vertices) {
+render_vertices(float box_size, uint32_t grid_size, size_t num_slices, std::vector<wenda::vulkan::Vertex> vertices) {
     // Create Vulkan instance, context + device
     wenda::vulkan::VulkanContainer vulkan(false);
     wenda::vulkan::PointRenderer renderer(vulkan, {.grid_size = grid_size, .subsample_factor = 4});
 
-    std::vector<float> result(static_cast<size_t>(grid_size) * grid_size * grid_size);
+    std::vector<float> result(static_cast<size_t>(grid_size) * grid_size * num_slices);
 
     std::cout << "Start rendering volume" << std::endl;
     auto start_time = std::chrono::high_resolution_clock::now();
-    renderer.render_points_volume(vertices, box_size, result);
+    renderer.render_points_volume(vertices, box_size, num_slices, result);
     auto end_time = std::chrono::high_resolution_clock::now();
     auto duration =
         std::chrono::duration_cast<std::chrono::duration<double>>(end_time - start_time);
@@ -50,14 +50,14 @@ render_vertices(float box_size, uint32_t grid_size, std::vector<wenda::vulkan::V
     return result;
 }
 
-void render_single_sphere(size_t grid_size) {
+void render_single_sphere(size_t grid_size, size_t num_slices) {
     // prepare vertex data
     std::vector<wenda::vulkan::Vertex> vertices = {
-        {{0.5f, 0.5f, 0.5f}, {1.0f}, 0.0f},
+        {{0.5f, 0.5f, 0.5f}, {1.0f}, 0.25f},
     };
 
     // Create Vulkan instance, context + device
-    auto result = render_vertices(1.0f, static_cast<uint32_t>(grid_size), vertices);
+    auto result = render_vertices(1.0f, static_cast<uint32_t>(grid_size), num_slices, vertices);
 
     auto total_sum = std::reduce(result.begin(), result.end(), 0.0, std::plus<double>());
     std::cout << "Total weight: " << total_sum << std::endl;
@@ -83,7 +83,7 @@ void render_single_sphere(size_t grid_size) {
     }
 }
 
-void render_points_from_file(uint32_t grid_size, const char *filepath) {
+void render_points_from_file(uint32_t grid_size, size_t num_slices, const char *filepath) {
     std::ifstream file(filepath, std::ios::binary);
 
     file.seekg(0, std::ios::end);
@@ -121,7 +121,7 @@ void render_points_from_file(uint32_t grid_size, const char *filepath) {
 
     std::cout << "Vertices after augmentation: " << vertices.size() << std::endl;
 
-    auto result = render_vertices(box_size, grid_size, vertices);
+    auto result = render_vertices(box_size, grid_size, num_slices, vertices);
 
     // need higher precision for the total sum
     auto rendered_mass = std::reduce(result.begin(), result.end(), 0.0);
@@ -141,7 +141,8 @@ void render_points_from_file(uint32_t grid_size, const char *filepath) {
 }
 
 int main(int argc, char *argv[]) {
-    uint32_t grid_size = 2048;
+    uint32_t grid_size = 512;
+    size_t num_slices = 512;
 
     if (argc > 1) {
         grid_size = std::stoi(argv[1]);
@@ -149,9 +150,9 @@ int main(int argc, char *argv[]) {
 
     if (argc > 2) {
         std::cout << "Rendering points from file." << std::endl;
-        render_points_from_file(grid_size, argv[2]);
+        render_points_from_file(grid_size, num_slices, argv[2]);
     } else {
-        render_single_sphere(grid_size);
+        render_single_sphere(grid_size, num_slices);
     }
 
     return 0;

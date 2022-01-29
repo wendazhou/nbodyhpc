@@ -95,17 +95,18 @@ py::array_t<float> render_points(
 
 py::array_t<float> render_points_volume(
     wenda::vulkan::PointRenderer &renderer, py::array_t<float> positions, py::array_t<float> weight,
-    py::array_t<float> radii, float box_size, bool periodic) {
+    py::array_t<float> radii, size_t num_slices, float box_size, bool periodic) {
     std::vector<wenda::vulkan::Vertex> vertices = assemble_vertices(positions, weight, radii, box_size, periodic);
 
     float *result_data;
-    long unsigned int grid_size = renderer.grid_size();
+    size_t grid_size = renderer.grid_size();
 
     {
         py::gil_scoped_release release;
         result_data = new float[grid_size * grid_size * grid_size];
         renderer.render_points_volume(
-            vertices, box_size, {result_data, grid_size * grid_size * grid_size}, check_signals);
+            vertices, box_size, num_slices,
+            {result_data, grid_size * grid_size * grid_size}, check_signals);
     }
 
     py::capsule free_result(result_data, [](void *ptr) { delete[] static_cast<float *>(ptr); });
@@ -154,6 +155,7 @@ PYBIND11_MODULE(_impl, m) {
             py::arg("positions"),
             py::arg("weight"),
             py::arg("radii"),
+            py::arg("num_slices"),
             py::arg("box_size") = 1.0f,
             py::arg("periodic") = false);
 }

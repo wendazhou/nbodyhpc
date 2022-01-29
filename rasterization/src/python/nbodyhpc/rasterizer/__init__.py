@@ -64,7 +64,7 @@ def render_points(positions: np.ndarray, weights: np.ndarray, radii: np.ndarray,
     return renderer.render_points(positions, weights, radii, box_size, periodic)
 
 
-def render_points_volume(positions: np.ndarray, weights: np.ndarray, radii: np.ndarray, box_size: float, grid_size: int, periodic: bool=False, subsample_factor: int=4) -> np.ndarray:
+def render_points_volume(positions: np.ndarray, weights: np.ndarray, radii: np.ndarray, box_size: float, grid_size: int, num_slices: int=None, periodic: bool=False, subsample_factor: int=4) -> np.ndarray:
     """Render points in a given volume.
 
     Parameters
@@ -80,6 +80,9 @@ def render_points_volume(positions: np.ndarray, weights: np.ndarray, radii: np.n
         Size of the box containing the data, defines the unit of length.
     grid_size : int
         Size of side of grid to use for rendering.
+    num_slices : int, optional
+        If not `None`, the number of slices to render (in the depth direction).
+        Otherwise, sets the number of sizes to be the same as ``grid_size``.
     periodic : bool
         If `True`, indicates that the box is to be considered to be periodic,
         and so balls should correspondingly wrap around the edges.
@@ -93,5 +96,8 @@ def render_points_volume(positions: np.ndarray, weights: np.ndarray, radii: np.n
     np.ndarray
         Numpy array of shape (grid_size, grid_size, grid_size) containing the rendered image.
     """
+    if num_slices is None:
+        num_slices = grid_size
+
     renderer = get_point_renderer(grid_size, subsample_factor)
-    return renderer.render_points_volume(positions, weights, radii, box_size, periodic)
+    return renderer.render_points_volume(positions, weights, radii, num_slices, box_size, periodic)
