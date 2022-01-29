@@ -88,8 +88,8 @@ py::array_t<float> render_points(
     py::capsule free_result(result_data, [](void *ptr) { delete[] static_cast<float *>(ptr); });
 
     return py::array_t<float>(
-        {(int)width, (int)height},
-        {(int)width * sizeof(float), sizeof(float)},
+        {width, height},
+        {sizeof(float), width * sizeof(float)},
         result_data,
         free_result);
 }
@@ -115,7 +115,7 @@ py::array_t<float> render_points_volume(
 
     return py::array_t<float>(
         {width, height, num_slices},
-        {width * sizeof(float), sizeof(float), width * height * sizeof(float)},
+        {sizeof(float), width * sizeof(float), width * height * sizeof(float)},
         result_data,
         free_result);
 }

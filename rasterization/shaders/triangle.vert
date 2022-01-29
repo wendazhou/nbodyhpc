@@ -24,7 +24,6 @@ layout(push_constant) uniform PushConsts {
 
 void main() 
 {
-	// float line_element = pushConsts.viewportSize / pushConsts.boxSize;
 	float line_element = pushConsts.lineElement;
 
 	// compute effective radius of circle at given height
@@ -63,7 +62,7 @@ void main()
     	gl_PointSize = n_pixel_diameter + 2;
 	}
 
-	gl_Position = vec4(2 * (inPos.xy / pushConsts.boxSize - 0.5), 0.0, 1.0);
+	gl_Position = vec4(2 * (inPos.yx / pushConsts.boxSize - 0.5), 0.0, 1.0);
 	outRadiusSquared = out_radius * out_radius;
-	outPosition = vec3(inPos.xy, z_offset) * line_element;
+	outPosition = vec3(inPos.yx, z_offset) * line_element;
 }

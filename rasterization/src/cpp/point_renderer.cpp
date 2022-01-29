@@ -177,12 +177,16 @@ vk::raii::RenderPass create_render_pass(vk::raii::Device const &device, vk::Form
 }
 
 PointRendererImpl
-make_point_renderer(VulkanContainer const &container, PointRendererConfiguration const &config) {
+make_point_renderer(VulkanContainer const &container, PointRendererConfiguration const &config, bool transpose) {
     auto &device = container.device_;
     auto memory_properties = container.physical_device_.getMemoryProperties();
 
     uint32_t width = config.width;
     uint32_t height = config.height;
+
+    if (transpose) {
+        std::swap(width, height);
+    }
 
     vk::raii::RenderPass renderPass = create_render_pass(device, vk::Format::eR32Sfloat);
 
@@ -590,8 +594,10 @@ void build_image_transfer_command(
 
 PointRenderer::PointRenderer(
     VulkanContainer const &container, PointRendererConfiguration const &config)
-    : impl_(std::make_unique<PointRendererImpl>(make_point_renderer(container, config))),
-      container_(container), width_(config.width), height_(config.height) {}
+    : impl_(std::make_unique<PointRendererImpl>(make_point_renderer(container, config, true))),
+      container_(container),
+      // Note: transposed here for column-major style
+      width_(config.height), height_(config.width) {}
 
 PointRenderer::~PointRenderer() {}
 
@@ -885,9 +891,6 @@ void PointRenderer::render_points_volume(
 
         uint32_t vertex_start = std::distance(points.begin(), it_start);
         uint32_t vertex_end = std::distance(points.begin(), it_end);
-
-        vertex_start = 0;
-        vertex_end = points.size();
 
         auto transfer_image = transfer_images.get_image();
 

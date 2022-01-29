@@ -44,14 +44,19 @@ public:
      * @param points The points to render.
      * @param box_size The size of the volume to render.
      * @param num_slices The number of slices to use in the rendering. If less than grid_size, only the front portion of the volume will be rendered.
-     * @param result A span of size at least grid_size ** 3 to store the result.
+     * @param result A span of size at least width * height * num_slices to store the result. It contains the rasterized data in column-major order.
      * @param should_stop Optional callback to check if the rendering should be interrupted or cancelled.
      * 
      */
     void render_points_volume(tcb::span<const Vertex> points, float box_size, size_t num_slices, tcb::span<float> result, std::function<bool()> const& should_stop = util::always_false);
 
-    size_t height() const noexcept { return height_; }
-    size_t width() const noexcept { return width_; }
+    // Note: the point renderer internally works using transposed dimensions, as Vulkan uses C-style row-major layout,
+    // whereas we wish to output Fortran-style column-major layout.
+    //
+    // In order to keep track of this, we expose the width and height of the grid, but internally the names
+    // are transposed for ease of implementation.
+    size_t height() const noexcept { return width_; }
+    size_t width() const noexcept { return height_; }
 };
 
 } // namespace vulkan
