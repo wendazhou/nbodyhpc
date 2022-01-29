@@ -113,7 +113,7 @@ ext_modules = [
 
 setup(
     name="nbodyhpc-rasterizer",
-    version="0.0.1",
+    version="0.0.2",
     description="A fast rasterizer for estimating fields from point clouds",
     author="Wenda Zhou",
     license="MIT",

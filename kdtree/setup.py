@@ -117,7 +117,7 @@ ext_modules = [
 
 setup(
     name="nbodyhpc-kdtree",
-    version="0.0.1",
+    version="0.0.2",
     description="A fast kd-tree for nearest-neighbor queries in 2d/3d (periodic) spaces",
     author="Wenda Zhou",
     license="MIT",
